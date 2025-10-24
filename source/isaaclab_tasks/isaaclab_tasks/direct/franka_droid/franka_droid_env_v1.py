@@ -138,7 +138,7 @@ class FrankaDroidEnvCfg_v1(DirectRLEnvCfg):
         RigidObjectCfg(
             prim_path="/World/envs/env_.*/Object_0",
             init_state=RigidObjectCfg.InitialStateCfg(
-                pos=(0.5, 0, 0.02),  # 改为 2cm，使物体底部接触桌面（桌面在z=0）
+                pos=(0.5, 0, 0.02),  # Changed to 2cm, making object bottom touch table (table at z=0)
                 rot=(1.0, 0.0, 0.0, 0.0)
             ),
             spawn=sim_utils.UsdFileCfg(
@@ -221,67 +221,67 @@ class FrankaDroidEnv_v1(DirectRLEnv):
 
         # Print joint information
         print("\n" + "="*80)
-        print("🤖 FRANKA ROBOTIQ 机器人配置信息 - v1")
+        print("🤖 FRANKA ROBOTIQ Robot Configuration - v1")
         print("="*80)
         
-        print(f"\n📊 基本信息:")
-        print(f"  关节数: {self._robot.num_joints} | Body数: {self._robot.num_bodies}")
+        print(f"\n📊 Basic Info:")
+        print(f"  Joints: {self._robot.num_joints} | Bodies: {self._robot.num_bodies}")
         print(f"  Actuators: {', '.join(self._robot.actuators.keys())}")
         
-        print(f"\n📋 关节列表 ({self._robot.num_joints}个):")
+        print(f"\n📋 Joint List ({self._robot.num_joints} joints):")
         for i in range(self._robot.num_joints):
             print(f"  [{i:2d}] {self._robot.joint_names[i]}")
         
-        print(f"\n🎯 默认关节位置:")
+        print(f"\n🎯 Default Joint Positions:")
         default_pos = self._robot.data.default_joint_pos[0]
         for i, name in enumerate(self._robot.joint_names):
             deg = default_pos[i].item() * 57.2958
             print(f"  [{i:2d}] {name:<25}: {default_pos[i].item():>7.3f} rad ({deg:>7.2f}°)")
         
-        print(f"\n📏 关节限位 (rad):")
+        print(f"\n📏 Joint Limits (rad):")
         lower_limits = self._robot.data.soft_joint_pos_limits[0, :, 0]
         upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: [{lower_limits[i].item():>7.3f}, {upper_limits[i].item():>7.3f}]")
         
-        print(f"\n⚙️  关节刚度 (Stiffness):")
+        print(f"\n⚙️  Joint Stiffness:")
         stiffness = self._robot.data.joint_stiffness[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {stiffness[i].item():>10.2f}")
         
-        print(f"\n🔧 关节阻尼 (Damping):")
+        print(f"\n🔧 Joint Damping:")
         damping = self._robot.data.joint_damping[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {damping[i].item():>10.4f}")
         
-        print(f"\n🏃 速度限位 (rad/s):")
+        print(f"\n🏃 Velocity Limits (rad/s):")
         vel_limits = self._robot.data.joint_vel_limits[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {vel_limits[i].item():>10.4f}")
         
-        print(f"\n💪 力矩限位 (Nm):")
+        print(f"\n💪 Effort Limits (Nm):")
         effort_limits = self._robot.data.joint_effort_limits[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {effort_limits[i].item():>10.2f}")
         
-        print(f"\n🦾 Body列表 ({self._robot.num_bodies}个):")
+        print(f"\n🦾 Body List ({self._robot.num_bodies} bodies):")
         for i, name in enumerate(self._robot.body_names):
             print(f"  [{i:2d}] {name}")
         
         # Armature (inertia compensation)
-        print(f"\n🔩 关节Armature (惯性补偿):")
+        print(f"\n🔩 Joint Armature (Inertia Compensation):")
         armature = self._robot.data.joint_armature[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {armature[i].item():>10.6f}")
         
         # Friction
-        print(f"\n⚡ 关节摩擦系数:")
+        print(f"\n⚡ Joint Friction:")
         friction = self._robot.data.joint_friction[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {friction[i].item():>10.6f}")
         
         # Actuator information
-        print(f"\n🎮 Actuator详细信息:")
+        print(f"\n🎮 Actuator Details:")
         for actuator_name, actuator in self._robot.actuators.items():
             print(f"  {actuator_name}:")
             print(f"    Joint names: {actuator.joint_names}")
@@ -291,14 +291,14 @@ class FrankaDroidEnv_v1(DirectRLEnv):
             print(f"    Velocity limit: {actuator.velocity_limit}")
         
         # Gripper joints identification
-        print(f"\n🤏 Gripper关节识别:")
+        print(f"\n🤏 Gripper Joint Identification:")
         gripper_joints = []
         for i, name in enumerate(self._robot.joint_names):
             if 'finger' in name.lower() or 'gripper' in name.lower() or 'knuckle' in name.lower():
                 gripper_joints.append((i, name))
         for idx, name in gripper_joints:
             is_controlled = idx == self.gripper_joint_index if hasattr(self, 'gripper_joint_index') else False
-            control_mark = " ← 主控制关节" if is_controlled else ""
+            control_mark = " ← Main control joint" if is_controlled else ""
             print(f"  [{idx:2d}] {name:<25} | Stiff: {stiffness[idx].item():>8.2f} | Damp: {damping[idx].item():>8.4f}{control_mark}")
         
         print("="*80 + "\n")
@@ -348,7 +348,7 @@ class FrankaDroidEnv_v1(DirectRLEnv):
         # ============================================================================
         # Offset from panda_hand to gripper tip in link frame
         self.ee_offset = torch.tensor([0.0, 0.0, 0.14], device=self.device)
-        self.minimal_height = 0.04  # Lifting threshold: 物体需要被抬起到4cm以上才算成功
+        self.minimal_height = 0.04  # Lifting threshold: object must be lifted above 4cm to count as success
         
         
         panda_hand_bodies = self._robot.find_bodies("panda_hand")

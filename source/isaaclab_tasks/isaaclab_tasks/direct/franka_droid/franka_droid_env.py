@@ -17,7 +17,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
-from isaaclab.sensors import Camera, CameraCfg
+from isaaclab.sensors import Camera, CameraCfg, TiledCamera, TiledCameraCfg
 
 
 # Absolute path to assets directory
@@ -205,11 +205,16 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     object = objects[0]
 
     # Wrist camera with RGBD for sim2real transfer
-    wrist_cam = CameraCfg(
+    # Using TiledCamera (like DEXTRAH) for better multi-environment support
+    # This solves descriptor allocation issues in headless mode with many environments
+    wrist_cam: TiledCameraCfg = TiledCameraCfg(
         prim_path="/World/envs/env_.*/robot/Gripper/Robotiq_2F_85/base_link/wrist_cam",
-        height=360,
-        width=640,
-        data_types=["rgb", "distance_to_camera"],
+        offset=TiledCameraCfg.OffsetCfg(
+            pos=(0.011, -0.031, -0.074), 
+            rot=(-0.420, 0.570, 0.576, -0.409), 
+            convention="opengl"
+        ),
+        data_types=["rgb", "distance_to_camera"],  # RGB + Depth (like DEXTRAH uses ["rgb", "depth"])
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=2.8,
             focus_distance=28.0,
@@ -217,11 +222,8 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
             vertical_aperture=3.024,
             clipping_range=(0.01, 10.0),
         ),
-        offset=CameraCfg.OffsetCfg(
-            pos=(0.011, -0.031, -0.074), 
-            rot=(-0.420, 0.570, 0.576, -0.409), 
-            convention="opengl"
-        ),
+        width=320,
+        height=240,
     )
 
     large_reach_threshold = 3.0
@@ -267,67 +269,67 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # Print joint information
         print("\n" + "="*80)
-        print("🤖 FRANKA ROBOTIQ 机器人配置信息 - v0")
+        print("🤖 FRANKA ROBOTIQ Robot Configuration - v0")
         print("="*80)
         
-        print(f"\n📊 基本信息:")
-        print(f"  关节数: {self._robot.num_joints} | Body数: {self._robot.num_bodies}")
+        print(f"\n📊 Basic Info:")
+        print(f"  Joints: {self._robot.num_joints} | Bodies: {self._robot.num_bodies}")
         print(f"  Actuators: {', '.join(self._robot.actuators.keys())}")
         
-        print(f"\n📋 关节列表 ({self._robot.num_joints}个):")
+        print(f"\n📋 Joint List ({self._robot.num_joints} joints):")
         for i in range(self._robot.num_joints):
             print(f"  [{i:2d}] {self._robot.joint_names[i]}")
         
-        print(f"\n🎯 默认关节位置:")
+        print(f"\n🎯 Default Joint Positions:")
         default_pos = self._robot.data.default_joint_pos[0]
         for i, name in enumerate(self._robot.joint_names):
             deg = default_pos[i].item() * 57.2958
             print(f"  [{i:2d}] {name:<25}: {default_pos[i].item():>7.3f} rad ({deg:>7.2f}°)")
         
-        print(f"\n📏 关节限位 (rad):")
+        print(f"\n📏 Joint Limits (rad):")
         lower_limits = self._robot.data.soft_joint_pos_limits[0, :, 0]
         upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: [{lower_limits[i].item():>7.3f}, {upper_limits[i].item():>7.3f}]")
         
-        print(f"\n⚙️  关节刚度 (Stiffness):")
+        print(f"\n⚙️  Joint Stiffness:")
         stiffness = self._robot.data.joint_stiffness[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {stiffness[i].item():>10.2f}")
         
-        print(f"\n🔧 关节阻尼 (Damping):")
+        print(f"\n🔧 Joint Damping:")
         damping = self._robot.data.joint_damping[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {damping[i].item():>10.4f}")
         
-        print(f"\n🏃 速度限位 (rad/s):")
+        print(f"\n🏃 Velocity Limits (rad/s):")
         vel_limits = self._robot.data.joint_vel_limits[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {vel_limits[i].item():>10.4f}")
         
-        print(f"\n💪 力矩限位 (Nm):")
+        print(f"\n💪 Effort Limits (Nm):")
         effort_limits = self._robot.data.joint_effort_limits[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {effort_limits[i].item():>10.2f}")
         
-        print(f"\n🦾 Body列表 ({self._robot.num_bodies}个):")
+        print(f"\n🦾 Body List ({self._robot.num_bodies} bodies):")
         for i, name in enumerate(self._robot.body_names):
             print(f"  [{i:2d}] {name}")
         
         # Armature (inertia compensation)
-        print(f"\n🔩 关节Armature (惯性补偿):")
+        print(f"\n🔩 Joint Armature (Inertia Compensation):")
         armature = self._robot.data.joint_armature[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {armature[i].item():>10.6f}")
         
         # Friction
-        print(f"\n⚡ 关节摩擦系数:")
+        print(f"\n⚡ Joint Friction:")
         friction = self._robot.data.joint_friction[0]
         for i, name in enumerate(self._robot.joint_names):
             print(f"  [{i:2d}] {name:<25}: {friction[i].item():>10.6f}")
         
         # Actuator information
-        print(f"\n🎮 Actuator详细信息:")
+        print(f"\n🎮 Actuator Details:")
         for actuator_name, actuator in self._robot.actuators.items():
             print(f"  {actuator_name}:")
             print(f"    Joint names: {actuator.joint_names}")
@@ -337,14 +339,14 @@ class FrankaDroidEnv(DirectRLEnv):
             print(f"    Velocity limit: {actuator.velocity_limit}")
         
         # Gripper joints identification
-        print(f"\n🤏 Gripper关节识别:")
+        print(f"\n🤏 Gripper Joint Identification:")
         gripper_joints = []
         for i, name in enumerate(self._robot.joint_names):
             if 'finger' in name.lower() or 'gripper' in name.lower() or 'knuckle' in name.lower():
                 gripper_joints.append((i, name))
         for idx, name in gripper_joints:
             is_controlled = idx == self.gripper_joint_index if hasattr(self, 'gripper_joint_index') else False
-            control_mark = " ← 主控制关节" if is_controlled else ""
+            control_mark = " ← Main control joint" if is_controlled else ""
             print(f"  [{idx:2d}] {name:<25} | Stiff: {stiffness[idx].item():>8.2f} | Damp: {damping[idx].item():>8.4f}{control_mark}")
         
         print("="*80 + "\n")
@@ -509,9 +511,11 @@ class FrankaDroidEnv(DirectRLEnv):
         self._robot = Articulation(self.cfg.robot)
         
         # Only create camera if in vision mode
+        # Use TiledCamera for better multi-environment support
         if self.cfg.use_vision_observations:
-            self._wrist_cam = Camera(self.cfg.wrist_cam)
+            self._wrist_cam = TiledCamera(self.cfg.wrist_cam)
             self.scene.sensors["wrist_cam"] = self._wrist_cam
+            print(f"[INFO] Using TiledCamera (DEXTRAH-style, solves descriptor allocation)")
         
         # Create single object
         self._object = RigidObject(self.cfg.object)
@@ -701,16 +705,16 @@ class FrankaDroidEnv(DirectRLEnv):
         # Safety check: replace any NaN or Inf values with zeros
         total_reward = torch.nan_to_num(total_reward, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Log reward components for monitoring
+        # Log reward components for monitoring (step-level averages)
         if hasattr(self, "extras"):
             self.extras.setdefault("log", {}).update({
-                "Episode/Episode_Reward/reaching_reward":     reaching_reward.mean(),
-                "Episode/Episode_Reward/lifting_reward":      lifting_reward.mean(),
-                "Episode/Episode_Reward/goal_tracking":       goal_tracking.mean(),
-                "Episode/Episode_Reward/goal_tracking_fine":  goal_tracking_fine.mean(),
-                "Episode/Episode_Reward/action_penalty":      action_penalty.mean(),
-                "Episode/Episode_Reward/joint_vel_penalty":   joint_vel_penalty.mean(),
-                "Episode/Episode_Reward/total_reward":        total_reward.mean(),
+                "Train/step_reward_reaching":     reaching_reward.mean(),
+                "Train/step_reward_lifting":      lifting_reward.mean(),
+                "Train/step_reward_goal_tracking": goal_tracking.mean(),
+                "Train/step_reward_goal_fine":    goal_tracking_fine.mean(),
+                "Train/step_penalty_action":      action_penalty.mean(),
+                "Train/step_penalty_velocity":    joint_vel_penalty.mean(),
+                "Train/step_reward_total":        total_reward.mean(),  # Step average (for reference)
             })
 
         return total_reward

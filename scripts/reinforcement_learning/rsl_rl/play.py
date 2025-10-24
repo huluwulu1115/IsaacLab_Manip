@@ -23,6 +23,7 @@ parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to run before exiting.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
@@ -177,6 +178,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs = env.get_observations()
     timestep = 0
+    # optional evaluation control by episodes
+    eval_mode = args_cli.num_episodes is not None and args_cli.num_episodes > 0
+    if eval_mode:
+        num_envs_eval = env.unwrapped.num_envs
+        device_eval = env.unwrapped.device
+        episode_rewards = torch.zeros(num_envs_eval, device=device_eval)
+        episode_lengths = torch.zeros(num_envs_eval, device=device_eval)
+        episodes_completed = 0
+        completed_episode_rewards = []  # Record completed episodes
+        
+        print(f"\n{'='*80}")
+        print(f"EVALUATING TEACHER POLICY")
+        print(f"{'='*80}")
+        print(f"Note: Reward = Episode cumulative total reward (sum of all step rewards)")
+        print(f"{'='*80}\n")
+        print(f"Running {args_cli.num_episodes} episodes across {num_envs_eval} parallel environments...\n")
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -185,7 +202,42 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, rewards, dones, infos = env.step(actions)
+        # episode counting (when requested)
+        if eval_mode:
+            episode_rewards += rewards
+            episode_lengths += 1
+            done_indices = dones.nonzero(as_tuple=False).flatten()
+            if len(done_indices) > 0:
+                for idx in done_indices:
+                    if episodes_completed < args_cli.num_episodes:
+                        ep_reward = episode_rewards[idx].item()
+                        ep_length = episode_lengths[idx].item()
+                        completed_episode_rewards.append(ep_reward)
+                        episodes_completed += 1
+                        
+                        # Print episode result (consistent with student evaluation)
+                        print(f"  Episode {episodes_completed}/{args_cli.num_episodes} | "
+                              f"EpisodeReward: {ep_reward:.2f} | Length: {ep_length:.0f}")
+                    
+                    # reset trackers for that env slot
+                    episode_rewards[idx] = 0
+                    episode_lengths[idx] = 0
+                
+                if episodes_completed >= args_cli.num_episodes:
+                    # Print summary (consistent with student evaluation)
+                    print(f"\n{'='*80}")
+                    print(f"EVALUATION RESULTS (Episode Reward = Cumulative Total Reward)")
+                    print(f"{'='*80}")
+                    print(f"Episodes: {len(completed_episode_rewards)}")
+                    mean_r = sum(completed_episode_rewards) / len(completed_episode_rewards)
+                    std_r = torch.tensor(completed_episode_rewards).std().item()
+                    print(f"Episode Reward Mean: {mean_r:.2f} ± {std_r:.2f}")
+                    print(f"Episode Reward Median: {sorted(completed_episode_rewards)[len(completed_episode_rewards)//2]:.2f}")
+                    print(f"Episode Reward Min: {min(completed_episode_rewards):.2f}")
+                    print(f"Episode Reward Max: {max(completed_episode_rewards):.2f}")
+                    print(f"{'='*80}\n")
+                    break
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video

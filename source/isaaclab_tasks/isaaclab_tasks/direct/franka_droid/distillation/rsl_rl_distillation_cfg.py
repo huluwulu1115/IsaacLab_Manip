@@ -53,18 +53,29 @@ class FrankaDroidVisionStudentTeacherCfg(RslRlDistillationStudentTeacherCfg):
 @configclass  
 class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     """
-    Online DAgger distillation configuration.
+    Online DAgger distillation configuration (DEXTRAH-aligned).
     
     Teacher policy: State-based (41D privileged state)
     Student policy: Vision-based (24D proprioception + RGBD camera)
+    
+    Key features:
+    - Per-step updates (true online learning)
+    - Beta scheduling (teacher→student transition)
+    - Configurable teacher loading
     """
     
     class_name: str = "DistillationRunner"
     
     # Training parameters
-    num_steps_per_env: int = 24  # Match teacher training
+    num_steps_per_env: int = 24  # Steps per iteration (for logging)
     max_iterations: int = 1000  # Distillation iterations
     save_interval: int = 50
+    
+    # Beta schedule (improved over DEXTRAH)
+    # DEXTRAH uses step function (1.0→0.0 at 15k), we use linear decay for smoother transition
+    beta_start_decay: int = 10_000   # Start linear decay
+    beta_end_decay: int = 30_000     # End decay (pure student after this)
+    beta_strategy: str = "linear"    # "step" (DEXTRAH) or "linear" (smoother, recommended)
     
     # Experiment name
     experiment_name: str = "franka_droid_distillation"
@@ -96,10 +107,18 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     device: str = "cuda:0"
     seed: int = 42
     
-    # Resume from teacher checkpoint
+    # Teacher checkpoint configuration
     resume: bool = False  # Set to False for distillation (we load teacher separately)
     load_run: str = "2025-10-23_19-43-40"  # Teacher run directory
     load_checkpoint: str = "model_1499.pt"  # Teacher checkpoint
+    
+    # Teacher policy configuration (loaded from teacher training config)
+    teacher_config: dict = {
+        "num_observations": 41,  # Privileged state observations
+        "num_actions": 8,  # Robot actions
+        "actor_hidden_dims": [256, 128, 64],  # Must match teacher training
+        "activation": "elu",  # Must match teacher training
+    }
     
     # Clip actions (match teacher)
     clip_actions: bool = True

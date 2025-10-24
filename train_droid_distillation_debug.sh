@@ -28,7 +28,7 @@ echo -e "${BLUE}[INFO] Teacher checkpoint: $TEACHER_PATH${NC}"
 
 # Training parameters (REDUCED for debugging)
 NUM_ENVS=16  # Very small to avoid GPU descriptor allocation issues
-MAX_ITERATIONS=10  # Just a few iterations for testing
+MAX_STEPS=100  # Just 100 steps for testing (DEXTRAH uses max_steps)
 SEED=42
 DEVICE="cuda:0"
 TASK="Isaac-DROID-Distillation-v0"
@@ -36,7 +36,7 @@ TASK="Isaac-DROID-Distillation-v0"
 echo -e "${GREEN}[START] Debug distillation training${NC}"
 echo -e "${BLUE}  Task: $TASK${NC}"
 echo -e "${BLUE}  Num envs: $NUM_ENVS (REDUCED for debugging)${NC}"
-echo -e "${BLUE}  Max iterations: $MAX_ITERATIONS (REDUCED for debugging)${NC}"
+echo -e "${BLUE}  Max steps: $MAX_STEPS (REDUCED for debugging)${NC}"
 echo -e "${BLUE}  Device: $DEVICE${NC}"
 echo -e "${BLUE}  Teacher: $TEACHER_RUN${NC}"
 
@@ -48,7 +48,7 @@ cd "$SCRIPT_DIR"
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train_vision_distillation.py \
     --task="$TASK" \
     --num_envs="$NUM_ENVS" \
-    --max_iterations="$MAX_ITERATIONS" \
+    --max_steps="$MAX_STEPS" \
     --seed="$SEED" \
     --device="$DEVICE" \
     --load_run="$TEACHER_RUN" \

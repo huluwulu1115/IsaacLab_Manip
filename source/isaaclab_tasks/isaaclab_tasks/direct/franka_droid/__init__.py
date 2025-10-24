@@ -17,6 +17,7 @@ Available versions:
 import gymnasium as gym
 
 from . import agents
+from . import distillation
 
 ##
 # Register Gym environments
@@ -50,11 +51,11 @@ gym.register(
 # Distills teacher policy (state-based) to student policy (vision-based)
 gym.register(
     id="Isaac-DROID-Distillation-v0",
-    entry_point=f"{__name__}.franka_droid_distillation_env:FrankaDroidDistillationEnv",
+    entry_point=f"{__name__}.distillation.distillation_env:FrankaDroidDistillationEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.franka_droid_distillation_env:FrankaDroidDistillationEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_distillation_cfg:FrankaDroidDistillationRunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.distillation.distillation_env:FrankaDroidDistillationEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{distillation.__name__}.rsl_rl_distillation_cfg:FrankaDroidDistillationRunnerCfg",
     },
 )
 

@@ -6,7 +6,7 @@ This configuration enables vision-based observations for student policy distilla
 
 from isaaclab.utils import configclass
 from isaaclab.scene import InteractiveSceneCfg
-from .franka_droid_env import FrankaDroidEnv, FrankaDroidEnvCfg
+from ..franka_droid_env import FrankaDroidEnv, FrankaDroidEnvCfg
 
 
 @configclass

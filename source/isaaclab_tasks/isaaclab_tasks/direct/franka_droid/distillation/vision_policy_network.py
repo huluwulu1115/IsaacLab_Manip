@@ -17,49 +17,53 @@ from typing import Tuple
 
 class SimpleCNNEncoder(nn.Module):
     """
-    Simple CNN encoder for RGBD images (360x640x4).
+    Simple CNN encoder for RGBD images (flexible resolution).
     
     Architecture:
-    - Input: (batch, 4, 360, 640) - RGBD
-    - Conv layers with downsampling
+    - Input: (batch, 4, H, W) - RGBD
+    - 4 Conv layers with stride=2 (total /16 downsampling)
     - Output: (batch, feature_dim) - flattened features
+    
+    Resolution: Automatically adapts to input size
     """
     
-    def __init__(self, feature_dim: int = 256):
+    def __init__(self, feature_dim: int = 256, input_height: int = 240, input_width: int = 320):
         super().__init__()
         
         # Input: 4 channels (RGB + Depth)
-        # Conv1: 4 -> 32, /2 downsampling -> (32, 180, 320)
-        # Conv2: 32 -> 64, /2 downsampling -> (64, 90, 160)
-        # Conv3: 64 -> 128, /2 downsampling -> (128, 45, 80)
-        # Conv4: 128 -> 256, /2 downsampling -> (256, 22, 40)
-        # Flatten: 256 * 22 * 40 = 225,280
-        # FC: 225,280 -> feature_dim
+        # Each conv layer with stride=2 reduces size by half
+        # Total reduction: /16 (4 layers of stride=2)
         
         self.encoder = nn.Sequential(
-            # Conv1
-            nn.Conv2d(4, 32, kernel_size=5, stride=2, padding=2),  # -> (32, 180, 320)
+            # Conv1: /2
+            nn.Conv2d(4, 32, kernel_size=5, stride=2, padding=2),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             
-            # Conv2
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # -> (64, 90, 160)
+            # Conv2: /4
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             
-            # Conv3
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # -> (128, 45, 80)
+            # Conv3: /8
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             
-            # Conv4
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # -> (256, 22, 40)
+            # Conv4: /16
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         )
         
-        # Calculate flattened size: 256 * 22 * 40 = 225,280
-        self.flatten_size = 256 * 23 * 40  # ceil(360/16)=23, ceil(640/16)=40
+        # Calculate output size after 4 stride=2 convolutions
+        # Formula: output_size = ceil(input_size / 16)
+        import math
+        out_height = math.ceil(input_height / 16)
+        out_width = math.ceil(input_width / 16)
+        self.flatten_size = 256 * out_height * out_width
+        
+        print(f"[CNN Encoder] Input: {input_height}×{input_width} → Output: {out_height}×{out_width} → Flatten: {self.flatten_size}")
         
         # Fully connected layer to compress to feature_dim
         self.fc = nn.Sequential(
@@ -104,7 +108,7 @@ class VisionStudentPolicy(nn.Module):
     
     Input:
     - Proprioception: (batch, 24) - joint states + actions
-    - RGBD image: (batch, 360, 640, 4)
+    - RGBD image: (batch, H, W, 4) - flexible resolution
     
     Output:
     - Action: (batch, action_dim)
@@ -117,6 +121,8 @@ class VisionStudentPolicy(nn.Module):
         vision_feature_dim: int = 256,
         hidden_dims: list[int] = [512, 256, 128],
         activation: str = "elu",
+        image_height: int = 240,
+        image_width: int = 320,
     ):
         super().__init__()
         
@@ -124,8 +130,12 @@ class VisionStudentPolicy(nn.Module):
         self.action_dim = action_dim
         self.vision_feature_dim = vision_feature_dim
         
-        # Vision encoder
-        self.vision_encoder = SimpleCNNEncoder(feature_dim=vision_feature_dim)
+        # Vision encoder with configurable resolution
+        self.vision_encoder = SimpleCNNEncoder(
+            feature_dim=vision_feature_dim,
+            input_height=image_height,
+            input_width=image_width
+        )
         
         # MLP for combined features
         # Input: proprio (24) + vision features (256) = 280

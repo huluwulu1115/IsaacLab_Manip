@@ -17,15 +17,16 @@ TEACHER_RUN="2025-10-23_19-43-40"
 TEACHER_CHECKPOINT="model_1499.pt"
 
 # 训练参数（可以根据你的硬件调整）
-NUM_ENVS=512          # RTX 5090可以处理更多
-MAX_ITERATIONS=1000   # 完整训练
+NUM_ENVS=256
+MAX_STEPS=100000
 SEED=42
 DEVICE="cuda:0"
 TASK="Isaac-DROID-Distillation-v0"
 
 echo -e "${BLUE}配置:${NC}"
 echo "  Num envs: $NUM_ENVS"
-echo "  Max iterations: $MAX_ITERATIONS"
+echo "  Max steps: $MAX_STEPS (DEXTRAH-aligned)"
+echo "  Beta warmup: 15,000 steps"
 echo "  Teacher: $TEACHER_RUN"
 
 # 运行训练
@@ -36,7 +37,7 @@ source ~/miniconda3/bin/activate env_isaaclab_5.x
 python -u scripts/reinforcement_learning/rsl_rl/train_vision_distillation.py \
     --task="$TASK" \
     --num_envs="$NUM_ENVS" \
-    --max_iterations="$MAX_ITERATIONS" \
+    --max_steps="$MAX_STEPS" \
     --seed="$SEED" \
     --load_run="$TEACHER_RUN" \
     --checkpoint="$TEACHER_CHECKPOINT" \
