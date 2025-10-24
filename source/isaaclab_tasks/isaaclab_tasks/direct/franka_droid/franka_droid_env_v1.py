@@ -24,45 +24,15 @@ from isaaclab.sensors import Camera, CameraCfg
 ASSET_PATH = Path(__file__).parent / "../../../../../assets"
 
 
-
 @configclass
-class BinaryJointPositionActionCfg:
-    """Configuration for binary joint position control."""
-    asset_name: str = MISSING
-    joint_names: list[str] = MISSING
-    open_command_expr: dict[str, float] = MISSING
-    close_command_expr: dict[str, float] = MISSING
-
-    def __init__(self, asset_name: str, joint_names: list[str], 
-                 open_command_expr: dict[str, float], close_command_expr: dict[str, float]):
-        self.asset_name = asset_name
-        self.joint_names = joint_names
-        self.open_command_expr = open_command_expr
-        self.close_command_expr = close_command_expr
-
-
-@configclass
-class JointPositionActionCfg:
-    """Configuration for joint position control."""
-    asset_name: str = MISSING
-    joint_names: list[str] = MISSING
-    scale: float = MISSING
-    use_default_offset: bool = True
-
-    def __init__(self, asset_name: str, joint_names: list[str], 
-                 scale: float, use_default_offset: bool = True):
-        self.asset_name = asset_name
-        self.joint_names = joint_names
-        self.scale = scale
-        self.use_default_offset = use_default_offset
-
-
-@configclass
-class FrankaDroidEnvCfg(DirectRLEnvCfg):
+class FrankaDroidEnvCfg_v1(DirectRLEnvCfg):
     """
-    Franka DROID environment v0
-    Old version of the environment, using the old Franka Panda robotiq 2f-85 gripper usd
-    There are some issue with the old usd.
+    Franka DROID environment v1
+
+    Use this version when you want to:
+    1. Understand what physics parameters USD provides
+    2. Train with USD-defined stiffness/damping values
+    3. Debug robot configuration
     """
     
     episode_length_s = 5.0
@@ -73,9 +43,6 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     
     # Sim2Real Configuration
     use_vision_observations = False  # True for student (vision), False for teacher (state)
-    
-    # Visualization Configuration
-    enable_visualization_markers = True  # Set to False to disable EE/goal markers (saves GPU resources)
     
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,
@@ -104,21 +71,21 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     """Scale factor for arm joint position actions."""
     gripper_open_pos: float = 0.0
     """Gripper open position in radians (0°)."""
-    gripper_close_pos: float = np.pi / 4
-    """Gripper close position in radians (45°)."""
+    gripper_close_pos: float = 0.820305  # 47° in radians, matching USD joint limit
+    """Gripper close position in radians (47°)."""
     
     # Robot: Let USD define physics parameters (v1 feature!)
     robot = ArticulationCfg(
         prim_path="/World/envs/env_.*/robot",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=str(ASSET_PATH / "franka_robotiq_2f_85_flattened.usd"),
+            usd_path=str(ASSET_PATH / "robotiq_flatten_v1.usda"),
             activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 max_depenetration_velocity=5.0,
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=False,
+                enabled_self_collisions=True,
                 solver_position_iteration_count=64,
                 solver_velocity_iteration_count=0,
             ),
@@ -133,7 +100,7 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
                 "panda_joint4": -4 / 5 * np.pi,
                 "panda_joint5": 0.0,
                 "panda_joint6": 3 / 5 * np.pi,
-                "panda_joint7": 0.0,
+                "panda_joint7": 1 / 4 * np.pi,
                 "finger_joint": 0.0,
                 "right_outer.*": 0.0,
                 "left_inner.*": 0.0,
@@ -166,25 +133,12 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
         },
     )
 
-    arm_action = JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["panda_joint.*"],
-        scale=0.5,
-        use_default_offset=True,
-    )
-    
-    gripper_action = BinaryJointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["finger_joint"],
-        open_command_expr={"finger_joint": 0.0},
-        close_command_expr={"finger_joint": np.pi/4},
-    )
-
+    # Multi-object support
     objects = [
         RigidObjectCfg(
             prim_path="/World/envs/env_.*/Object_0",
             init_state=RigidObjectCfg.InitialStateCfg(
-                pos=(0.5, 0, 0.055),
+                pos=(0.5, 0, 0.02),  # 改为 2cm，使物体底部接触桌面（桌面在z=0）
                 rot=(1.0, 0.0, 0.0, 0.0)
             ),
             spawn=sim_utils.UsdFileCfg(
@@ -227,7 +181,7 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     large_reach_threshold = 3.0
 
 
-class FrankaDroidEnv(DirectRLEnv):
+class FrankaDroidEnv_v1(DirectRLEnv):
     """
     Franka DROID environment v1 - Complete version with USD physics debugging.
 
@@ -260,14 +214,14 @@ class FrankaDroidEnv(DirectRLEnv):
     - self.step_count: Global curriculum step counter
     """
 
-    cfg: FrankaDroidEnvCfg
+    cfg: FrankaDroidEnvCfg_v1
     
-    def __init__(self, cfg: FrankaDroidEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: FrankaDroidEnvCfg_v1, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # Print joint information
         print("\n" + "="*80)
-        print("🤖 FRANKA ROBOTIQ 机器人配置信息 - v0")
+        print("🤖 FRANKA ROBOTIQ 机器人配置信息 - v1")
         print("="*80)
         
         print(f"\n📊 基本信息:")
@@ -360,10 +314,6 @@ class FrankaDroidEnv(DirectRLEnv):
         # Joint limits
         self.robot_dof_lower_limits = self._robot.data.soft_joint_pos_limits[0, :, 0].to(device=self.device)
         self.robot_dof_upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1].to(device=self.device)
-        self.robot_dof_range = self.robot_dof_upper_limits - self.robot_dof_lower_limits
-        self.robot_dof_range = torch.where(
-             self.robot_dof_range < 1e-6, torch.ones_like(self.robot_dof_range), self.robot_dof_range
-        )
         
         # Joint control targets
         self.robot_dof_targets = self._robot.data.default_joint_pos.clone()
@@ -374,7 +324,7 @@ class FrankaDroidEnv(DirectRLEnv):
             for i in range(1, 8)
         ]
         self.gripper_joint_index = self._robot.find_joints("finger_joint")[0][0]
-
+        print(f"Gripper joint index: {self.gripper_joint_index}")
         # ============================================================================
         # Environment State Buffers
         # ============================================================================
@@ -383,7 +333,6 @@ class FrankaDroidEnv(DirectRLEnv):
         self.goal_timer = torch.zeros(self.num_envs, device=self.device)
         self.prev_actions = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self.action_delta = torch.zeros_like(self.prev_actions)
-        self.prev_gripper_joint_pos = torch.zeros(self.num_envs, 2, device=self.device)
         
         # Curriculum learning counter
         self.step_count = 0
@@ -397,50 +346,42 @@ class FrankaDroidEnv(DirectRLEnv):
         # ============================================================================
         # End-Effector Configuration
         # ============================================================================
-        # Offset from panda_link8 to gripper tip in link frame
-        self.ee_offset = torch.tensor([0.0, 0.0, 0.16], device=self.device)
-        self.gripper_action_history = torch.zeros(self.num_envs, 20, device=self.device)
-        self.minimal_height = 0.04
-
-        panda_link8_bodies = self._robot.find_bodies("panda_link8")
-        self.hand_body_idx = panda_link8_bodies[0][0]
+        # Offset from panda_hand to gripper tip in link frame
+        self.ee_offset = torch.tensor([0.0, 0.0, 0.14], device=self.device)
+        self.minimal_height = 0.04  # Lifting threshold: 物体需要被抬起到4cm以上才算成功
+        
+        
+        panda_hand_bodies = self._robot.find_bodies("panda_hand")
+        self.hand_body_idx = panda_hand_bodies[0][0]
         
         # Sample initial goals
         all_env_ids = torch.arange(self.num_envs, device=self.device)
         self._sample_goal(all_env_ids)
 
         # ============================================================================
-        # Visualization Markers for End-Effector and Goal (Optional)
+        # Visualization Markers for End-Effector and Goal
         # ============================================================================
-        if self.cfg.enable_visualization_markers:
-            # Frame marker showing robot base orientation (above Franka)
-            frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/ee_frame")
-            frame_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
-            self.ee_frame_marker = VisualizationMarkers(frame_cfg)
-            
-            # Sphere marker at EE position
-            ee_dot_cfg = VisualizationMarkersCfg(
-                markers={
-                    "sphere": sim_utils.SphereCfg(
-                        radius=0.01,
-                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
-                    ),
-                },
-                prim_path="/Visuals/ee_dot"
-            )
-            self.ee_dot_marker = VisualizationMarkers(ee_dot_cfg)
-            
-            # Goal position marker (coordinate frame showing target position)
-            goal_frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/goal_frame")
-            goal_frame_cfg.markers["frame"].scale = (0.08, 0.08, 0.08)
-            self.goal_marker = VisualizationMarkers(goal_frame_cfg)
-            
-            print("[INFO] Visualization markers enabled")
-        else:
-            self.ee_frame_marker = None
-            self.ee_dot_marker = None
-            self.goal_marker = None
-            print("[INFO] Visualization markers disabled (saves GPU resources)")
+        # Frame marker showing robot base orientation (above Franka)
+        frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/ee_frame")
+        frame_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
+        self.ee_frame_marker = VisualizationMarkers(frame_cfg)
+        
+        # Sphere marker at EE position
+        ee_dot_cfg = VisualizationMarkersCfg(
+            markers={
+                "sphere": sim_utils.SphereCfg(
+                    radius=0.01,
+                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+                ),
+            },
+            prim_path="/Visuals/ee_dot"
+        )
+        self.ee_dot_marker = VisualizationMarkers(ee_dot_cfg)
+        
+        # Goal position marker (coordinate frame showing target position)
+        goal_frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/goal_frame")
+        goal_frame_cfg.markers["frame"].scale = (0.08, 0.08, 0.08)
+        self.goal_marker = VisualizationMarkers(goal_frame_cfg)
 
     def _sample_goal(self, env_ids: torch.Tensor):
         """Sample goal positions: x∈[0.4,0.6], y∈[-0.25,0.25], z∈[0.25,0.5]."""
@@ -556,10 +497,6 @@ class FrankaDroidEnv(DirectRLEnv):
         self.action_delta = self.actions - self.prev_actions
         self.prev_actions[:] = self.actions
 
-        # Update gripper action history (rolling window)
-        self.gripper_action_history = torch.roll(self.gripper_action_history, shifts=-1, dims=1)
-        self.gripper_action_history[:, -1] = self.actions[:, 7]
-
         # Resample goals every 5 seconds
         self.goal_timer += self.dt
         envs_to_resample = torch.nonzero(self.goal_timer >= 5.0, as_tuple=False).flatten()
@@ -579,18 +516,16 @@ class FrankaDroidEnv(DirectRLEnv):
         # Start with default positions
         targets = default_joint_pos.clone()
         
-        # Arm control: Apply scaled actions to arm joints (scale=0.5)
+        # Arm control: Apply scaled actions to arm joints
         for i, joint_idx in enumerate(self.arm_joint_indices):
-            targets[:, joint_idx] = default_joint_pos[:, joint_idx] + self.cfg.arm_action.scale * self.actions[:, i]
+            targets[:, joint_idx] = default_joint_pos[:, joint_idx] + self.cfg.arm_action_scale * self.actions[:, i]
 
         # Gripper control: Binary open/close based on action sign (negative = close)
         is_closing = self.actions[:, 7] < 0.0
-        close_pos = self.cfg.gripper_action.close_command_expr["finger_joint"]
-        open_pos = self.cfg.gripper_action.open_command_expr["finger_joint"]
         targets[:, self.gripper_joint_index] = torch.where(
             is_closing, 
-            torch.full((self.num_envs,), close_pos, device=self.device),
-            torch.full((self.num_envs,), open_pos, device=self.device)
+            torch.full((self.num_envs,), self.cfg.gripper_close_pos, device=self.device),
+            torch.full((self.num_envs,), self.cfg.gripper_open_pos, device=self.device)
         )
 
         # Clamp to joint limits and apply
@@ -645,22 +580,20 @@ class FrankaDroidEnv(DirectRLEnv):
         self._robot.data.ee_pos_w = hand_pos + quat_apply(hand_quat, offset)
         self._robot.data.obj_pos_w = self._objects[0].data.root_pos_w
         
-        # Visualize markers (only if enabled)
-        if self.cfg.enable_visualization_markers:
-            # Visualize EE orientation frame above Franka base (for better visibility)
-            robot_base_pos, _ = self._squeeze_robot_frame(self._robot.data.root_pos_w, self._robot.data.root_quat_w)
-            frame_pos = robot_base_pos.clone()
-            frame_pos[:, 2] += 1.0  # Position 1.0m above robot base
-            self.ee_frame_marker.visualize(frame_pos, hand_quat)
-            
-            # Visualize EE position
-            self.ee_dot_marker.visualize(self._robot.data.ee_pos_w)
-            
-            # Visualize goal position (coordinate frame showing target location)
-            # Use identity quaternion (no rotation) for the goal frame
-            goal_quat = torch.zeros(self.num_envs, 4, device=self.device)
-            goal_quat[:, 0] = 1.0  # w=1, x=y=z=0 (identity quaternion)
-            self.goal_marker.visualize(self.goal_pos_w, goal_quat)
+        # Visualize EE orientation frame above Franka base (for better visibility)
+        robot_base_pos, _ = self._squeeze_robot_frame(self._robot.data.root_pos_w, self._robot.data.root_quat_w)
+        frame_pos = robot_base_pos.clone()
+        frame_pos[:, 2] += 1.0  # Position 1.0m above robot base
+        self.ee_frame_marker.visualize(frame_pos, hand_quat)
+        
+        # Visualize EE position
+        self.ee_dot_marker.visualize(self._robot.data.ee_pos_w)
+        
+        # Visualize goal position (coordinate frame showing target location)
+        # Use identity quaternion (no rotation) for the goal frame
+        goal_quat = torch.zeros(self.num_envs, 4, device=self.device)
+        goal_quat[:, 0] = 1.0  # w=1, x=y=z=0 (identity quaternion)
+        self.goal_marker.visualize(self.goal_pos_w, goal_quat)
 
         # ============================================================================
         # Reward Components
@@ -684,7 +617,7 @@ class FrankaDroidEnv(DirectRLEnv):
         # 5. Regularization: Action smoothness and velocity penalties (curriculum-based)
         # Penalty weight fades from -1e-4 to -1e-7 over 10k steps
         curr_factor = min(self.step_count / 10000.0, 1.0)
-        penalty_w = (-1e-3) * (1.0 - curr_factor) + (-1e-6) * curr_factor
+        penalty_w = (-1e-4) * (1.0 - curr_factor) + (-1e-7) * curr_factor
         action_penalty = torch.sum(self.action_delta ** 2, dim=-1) * penalty_w
         joint_vel_penalty = torch.sum(self._robot.data.joint_vel ** 2, dim=-1) * penalty_w
 
@@ -927,3 +860,4 @@ class FrankaDroidEnv(DirectRLEnv):
     def _transform_world_to_robot_frame_quat(self, quat_w: torch.Tensor, robot_quat_w: torch.Tensor) -> torch.Tensor:
         """Transform world quaternion to robot root frame."""
         return quat_mul(quat_conjugate(robot_quat_w), quat_w)
+

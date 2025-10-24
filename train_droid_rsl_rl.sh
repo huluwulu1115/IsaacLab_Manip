@@ -19,13 +19,8 @@ export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 export TMPDIR="$(pwd)/tmp"
 
 # TensorBoard parameters
-readonly TENSORBOARD_PORT=6006
+readonly TENSORBOARD_PORT=6007
 readonly TENSORBOARD_LOG_DIR="logs/rsl_rl/${EXP_NAME}"
-
-# Video generation parameters
-readonly VIDEO_LENGTH=500     # frames (~10 seconds)
-readonly VIDEO_NUM_ENVS=4     # Number of environments for video
-readonly SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Detect if running over SSH
 IS_SSH=false
@@ -54,21 +49,6 @@ handle_interrupt() {
     fi
     
     echo ""
-    print_separator
-    echo "🎬 Video Generation Options"
-    print_separator
-    
-    # Ask if user wants to generate video
-    read -p "Generate video from latest checkpoint? [y/N]: " -n 1 -r GENERATE_VIDEO
-    echo ""
-    
-    if [[ $GENERATE_VIDEO =~ ^[Yy]$ ]]; then
-        generate_video_from_latest
-    else
-        echo "Skipping video generation."
-    fi
-    
-    echo ""
     echo "📊 TensorBoard is still running at: http://localhost:$TENSORBOARD_PORT"
     echo "   To stop it: pkill -f tensorboard"
     print_separator
@@ -82,100 +62,9 @@ trap handle_interrupt SIGINT
 # HELPER FUNCTIONS
 #───────────────────────────────────────────────────────────────────────────────────
 
-# Open video file with available player
-open_video() {
-    local video_path="$1"
-    
-    # Skip auto-opening if running over SSH
-    if [ "$IS_SSH" = true ]; then
-        echo "📹 SSH Mode: Video saved but not opened"
-        echo "  Download with: scp $USER@$(hostname):$video_path ."
-        echo "  Or use rsync: rsync -avz $USER@$(hostname):$video_path ."
-        return 0
-    fi
-    
-    if command -v xdg-open &> /dev/null; then
-        xdg-open "$video_path" &> /dev/null &
-        echo "✓ Opened with default player (xdg-open)"
-        return 0
-    elif command -v vlc &> /dev/null; then
-        vlc "$video_path" &> /dev/null &
-        echo "✓ Opened with VLC"
-        return 0
-    elif command -v mpv &> /dev/null; then
-        mpv "$video_path" &> /dev/null &
-        echo "✓ Opened with mpv"
-        return 0
-    elif command -v ffplay &> /dev/null; then
-        ffplay "$video_path" &> /dev/null &
-        echo "✓ Opened with ffplay"
-        return 0
-    else
-        echo "⚠ No video player found"
-        echo "  Install one: sudo apt install vlc"
-        echo "  Or open manually: $video_path"
-        return 1
-    fi
-}
-
 # Print separator line
 print_separator() {
     echo "══════════════════════════════════════════════════════════════════════════════"
-}
-
-# Generate video from latest checkpoint
-generate_video_from_latest() {
-    echo ""
-    echo "🔍 Looking for latest checkpoint..."
-    
-    # Find the latest checkpoint
-    local latest_ckpt=$(find_best_checkpoint "$EXP_NAME")
-    
-    if [ -z "$latest_ckpt" ]; then
-        echo "⚠ No checkpoint found for experiment: $EXP_NAME"
-        echo "   Training may not have saved any checkpoints yet."
-        return 1
-    fi
-    
-    local abs_ckpt_path=$(realpath "$latest_ckpt")
-    echo "✓ Found checkpoint: $abs_ckpt_path"
-    
-    # Generate video
-    print_separator
-    echo "🎬 Generating Policy Visualization Video..."
-    print_separator
-    printf "Task          : %s\n" "$TASK"
-    printf "Checkpoint    : %s\n" "$abs_ckpt_path"
-    printf "Video length  : %s frames\n" "$VIDEO_LENGTH"
-    printf "Num envs      : %s\n" "$VIDEO_NUM_ENVS"
-    print_separator
-    
-    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
-        --task="$TASK" \
-        --checkpoint="$abs_ckpt_path" \
-        --video \
-        --enable_cameras \
-        --video_length $VIDEO_LENGTH \
-        --num_envs=$VIDEO_NUM_ENVS \
-        --headless
-    
-    if [ $? -eq 0 ]; then
-        echo ""
-        echo "✓ Video generated successfully!"
-        
-        # Find and open the video
-        local latest_video=$(find_latest_video)
-        if [ -n "$latest_video" ]; then
-            local abs_video_path=$(realpath "$latest_video")
-            echo "  Video location: $abs_video_path"
-            echo ""
-            echo "🎬 Opening video..."
-            open_video "$abs_video_path"
-        fi
-    else
-        echo ""
-        echo "⚠ Video generation failed"
-    fi
 }
 
 # Find the best checkpoint from RSL-RL training
@@ -188,11 +77,6 @@ find_best_checkpoint() {
         # Find the latest model checkpoint (usually the best for on-policy algorithms)
         find "$exp_dir" -type f -name "model_*.pt" 2>/dev/null | sort -V | tail -n1
     fi
-}
-
-# Find the most recent video in logs directory
-find_latest_video() {
-    find logs/rsl_rl -name "*.mp4" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-
 }
 
 # Launch TensorBoard in the background
@@ -334,83 +218,35 @@ echo "  $CKPT_DIR"
 
 # Show next steps
 echo ""
-echo "📋 Next Steps:"
-echo "  1. Evaluate the trained policy:"
-echo "     ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \\"
-echo "       --task $TASK --checkpoint '$ABS_CKPT_PATH'"
+print_separator
+echo "📋 How to Use Your Trained Policy:"
+print_separator
 echo ""
-echo "  2. Continue training from this checkpoint:"
-echo "     ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \\"
-echo "       --task $TASK --resume --load_run '$(dirname $CKPT_DIR)'"
-
-#───────────────────────────────────────────────────────────────────────────────────
-# POST-TRAINING: VIDEO GENERATION (OPTIONAL)
-#───────────────────────────────────────────────────────────────────────────────────
-
+echo "1️⃣  Evaluate policy (GUI mode):"
+echo ""
+echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \\"
+echo "      --task $TASK \\"
+echo "      --checkpoint '$ABS_CKPT_PATH' \\"
+echo "      --num_envs 16"
+echo ""
+echo "2️⃣  Evaluate policy with video recording:"
+echo ""
+echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \\"
+echo "      --task $TASK \\"
+echo "      --checkpoint '$ABS_CKPT_PATH' \\"
+echo "      --num_envs 4 \\"
+echo "      --video \\"
+echo "      --video_length 500 \\"
+echo "      --headless"
+echo ""
+echo "3️⃣  Continue training from this checkpoint:"
+echo ""
+echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \\"
+echo "      --task $TASK \\"
+echo "      --resume \\"
+echo "      --load_run '$(dirname $CKPT_DIR)'"
 echo ""
 print_separator
-read -p "📹 Generate video of trained policy? [y/N]: " -n 1 -r GENERATE_VIDEO
-echo ""
-
-if [[ ! $GENERATE_VIDEO =~ ^[Yy]$ ]]; then
-    echo "Skipping video generation."
-    echo ""
-    echo "📊 TensorBoard is still running at: http://localhost:$TENSORBOARD_PORT"
-    echo "   To stop it: pkill -f tensorboard"
-    print_separator
-    exit 0
-fi
-
-# Generate video
-print_separator
-echo "🎬 Generating Policy Visualization Video..."
-print_separator
-printf "Task          : %s\n" "$TASK"
-printf "Checkpoint    : %s\n" "$ABS_CKPT_PATH"
-printf "Video length  : %s frames\n" "$VIDEO_LENGTH"
-printf "Num envs      : %s\n" "$VIDEO_NUM_ENVS"
-print_separator
-
-./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
-    --task="$TASK" \
-    --checkpoint="$ABS_CKPT_PATH" \
-    --video \
-    --enable_cameras \
-    --video_length $VIDEO_LENGTH \
-    --num_envs=$VIDEO_NUM_ENVS \
-    --headless
-
-# Check if video generation succeeded
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "⚠ Video generation failed"
-    print_separator
-    exit 1
-fi
-
-# Find and open the generated video
-echo ""
-echo "✓ Video generated successfully!"
-
-LATEST_VIDEO=$(find_latest_video)
-
-if [ -z "$LATEST_VIDEO" ]; then
-    echo "⚠ Could not locate generated video in logs/"
-    print_separator
-    exit 1
-fi
-
-ABS_VIDEO_PATH=$(realpath "$LATEST_VIDEO")
-echo "  Video location: $ABS_VIDEO_PATH"
-
-# Open video
-echo ""
-echo "🎬 Opening video..."
-open_video "$ABS_VIDEO_PATH"
-
-print_separator
-echo "✨ All done! Enjoy your trained policy!"
-echo ""
 echo "📊 TensorBoard is still running at: http://localhost:$TENSORBOARD_PORT"
 echo "   To stop it: pkill -f tensorboard"
 print_separator

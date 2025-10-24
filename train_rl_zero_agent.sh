@@ -5,11 +5,12 @@ set -euo pipefail                       # abort on any error, unset var, or pipe
 GPU_ID=0                                # pick the physical GPU
 
 # TASK="Isaac-Droid-Stapler-Grasplift-Direct-v0"
-TASK="Isaac-DROID-Direct-v0"
-NUM_ENVS=1
+# TASK="Isaac-DROID-Direct-v0"  # Original version with manual actuator config
+TASK="Isaac-DROID-Direct-v1"     # v1: Simplified version reading from USD
+NUM_ENVS=4
 # ────────────────────────────────────────────────────────────────────────────────
 
-export CUDA_VISIBLE_DEVICES="${GPU_ID}" # expose only the chosen GPU to Isaac Sim
+export CUDA_VISIBLE_DEVICES="${GPU_ID}" # expose only the chosen GPU to Isaac Sim
 export TMPDIR="/home/huluwulu/Projects/IsaacLab_Manip/tmp"
 
 printf "GPU           : %s\nTask          : %s\nNum envs      : %s\n" \
@@ -19,8 +20,7 @@ echo "────────────────────────�
 
 python scripts/environments/zero_agent.py \
   --task "$TASK" \
-  --num_envs "$NUM_ENVS" \
-  --enable_cameras
+  --num_envs "$NUM_ENVS"
 
 
 echo "Done ✔︎"

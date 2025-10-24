@@ -1,12 +1,12 @@
 echo "Starting Visualization"
 
 # visualization parameters
-TASK="Isaac-DROID-Direct-v0"
+TASK="Isaac-DROID-Direct-v1"
 GPU_ID=0                                
 
 export task=$TASK
-export checkpoint_path="/home/huluwulu/Projects/IsaacLab_Manip/logs/rl_games/franka_droid_direct/2025-10-22_14-14-14/nn/franka_droid_direct.pth"
-export num_envs=9
+export checkpoint_path="/home/huluwulu/Projects/IsaacLab_Manip/logs/rl_games/franka_droid_direct/2025-10-22_22-40-39/nn/franka_droid_direct.pth"
+export num_envs=1
 export env_video_size="480 640"
 export video_length=500
 
@@ -34,7 +34,6 @@ python /home/huluwulu/Projects/IsaacLab_Manip/scripts/reinforcement_learning/rl_
 --enable_cameras \
 --video_length $video_length \
 --num_envs=$num_envs \
---headless
 
 echo "done"
 

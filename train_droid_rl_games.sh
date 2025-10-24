@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 #═══════════════════════════════════════════════════════════════════════════════════
-# DROID Direct RL Training Script - RL Games
-#═══════════════════════════════════════════════════════════════════════════════════
 # Description: Train teacher policy using RL Games with privileged state observations
-# Output:      Best checkpoint saved to logs/rl_games/<run_name>/nn/*.pth
 # Next steps:  Use checkpoint for evaluation or student training (vision-based)
 #═══════════════════════════════════════════════════════════════════════════════════
 
@@ -16,8 +13,8 @@ set -euo pipefail  # Exit on error, undefined variable, or pipe failure
 # Training parameters
 readonly GPU_ID=0
 readonly TASK="Isaac-DROID-Direct-v0"
-readonly EXP_NAME="franka_droid_direct"  
-readonly NUM_ENVS=1024
+readonly EXP_NAME="franka_droid_direct"
+readonly NUM_ENVS=4096
 
 # TensorBoard parameters
 readonly TENSORBOARD_PORT=6006
@@ -313,6 +310,7 @@ TRAINING_ACTIVE=true
     --num_envs "$NUM_ENVS" \
     --headless &
 
+
 TRAINING_PID=$!
 
 # Wait for training to complete
@@ -359,7 +357,7 @@ echo ""
 echo "📋 Next Steps:"
 echo "  1. Evaluate the trained policy:"
 echo "     ./isaaclab.sh -p scripts/reinforcement_learning/rl_games/play.py \\"
-echo "       --task $TASK --checkpoint '$ABS_CKPT_PATH'"
+echo "       --task $TASK --checkpoint '$ABS_CKPT_PATH' --num_envs 4"
 echo ""
 echo "  2. Train vision-based student with DAgger:"
 echo "     python train_dagger.py --teacher_checkpoint '$ABS_CKPT_PATH' --headless"
