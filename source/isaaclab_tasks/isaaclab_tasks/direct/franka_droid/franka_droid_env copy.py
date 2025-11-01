@@ -707,23 +707,23 @@ class FrankaDroidEnv(DirectRLEnv):
         goal_tracking = lifted_mask * (1.0 - torch.tanh(self._robot.data.dist_obj_goal / 0.3)) * 16.0
 
         # 4. Fine-grained goal tracking: Precise positioning near goal (weight=5.0, std=0.05)
-        # goal_tracking_fine = lifted_mask * (1.0 - torch.tanh(self._robot.data.dist_obj_goal / 0.05)) * 5.0
+        goal_tracking_fine = lifted_mask * (1.0 - torch.tanh(self._robot.data.dist_obj_goal / 0.05)) * 5.0
 
-        # # 5. Regularization: Action smoothness and velocity penalties (curriculum-based)
-        # # Penalty weight fades from -1e-4 to -1e-7 over 10k steps
-        # curr_factor = min(self.step_count / 10000.0, 1.0)
-        # penalty_w = (-1e-3) * (1.0 - curr_factor) + (-1e-6) * curr_factor
-        # action_penalty = torch.sum(self.action_delta ** 2, dim=-1) * penalty_w
-        # joint_vel_penalty = torch.sum(self._robot.data.joint_vel ** 2, dim=-1) * penalty_w
+        # 5. Regularization: Action smoothness and velocity penalties (curriculum-based)
+        # Penalty weight fades from -1e-4 to -1e-7 over 10k steps
+        curr_factor = min(self.step_count / 10000.0, 1.0)
+        penalty_w = (-1e-3) * (1.0 - curr_factor) + (-1e-6) * curr_factor
+        action_penalty = torch.sum(self.action_delta ** 2, dim=-1) * penalty_w
+        joint_vel_penalty = torch.sum(self._robot.data.joint_vel ** 2, dim=-1) * penalty_w
 
         # Total reward computation
         total_reward = (
             reaching_reward +
             lifting_reward +
-            goal_tracking
-            # goal_tracking_fine +
-            # action_penalty +
-            # joint_vel_penalty
+            goal_tracking +
+            goal_tracking_fine +
+            action_penalty +
+            joint_vel_penalty
         )
 
         # Safety check: replace any NaN or Inf values with zeros
@@ -735,9 +735,9 @@ class FrankaDroidEnv(DirectRLEnv):
                 "Train/step_reward_reaching":     reaching_reward.mean(),
                 "Train/step_reward_lifting":      lifting_reward.mean(),
                 "Train/step_reward_goal_tracking": goal_tracking.mean(),
-                # "Train/step_reward_goal_fine":    goal_tracking_fine.mean(),
-                # "Train/step_penalty_action":      action_penalty.mean(),
-                # "Train/step_penalty_velocity":    joint_vel_penalty.mean(),
+                "Train/step_reward_goal_fine":    goal_tracking_fine.mean(),
+                "Train/step_penalty_action":      action_penalty.mean(),
+                "Train/step_penalty_velocity":    joint_vel_penalty.mean(),
                 "Train/step_reward_total":        total_reward.mean(),  # Step average (for reference)
             })
 

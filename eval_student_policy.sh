@@ -13,7 +13,7 @@ echo -e "${GREEN}Vision Student Policy Evaluation${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 # Student checkpoint (from training)
-STUDENT_RUN="2025-10-24_02-25-04"  # Your successful training run
+STUDENT_RUN="/2025-10-26_13-21-01"  # Your successful training run
 STUDENT_CHECKPOINT="model_final.pt"
 CHECKPOINT_PATH="logs/rsl_rl/franka_droid_distillation/${STUDENT_RUN}/${STUDENT_CHECKPOINT}"
 

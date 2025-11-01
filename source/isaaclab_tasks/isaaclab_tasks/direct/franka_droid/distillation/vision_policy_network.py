@@ -164,9 +164,14 @@ class VisionStudentPolicy(nn.Module):
         
         self.mlp = nn.Sequential(*layers)
         
-        # Action distribution parameters
+        # Action distribution parameters (DEXTRAH-style)
+        # Use log_std instead of std directly to prevent collapse
+        # log_std = 0 → std = exp(0) = 1.0 (good initial exploration)
         self.action_mean = nn.Parameter(torch.zeros(action_dim), requires_grad=False)
-        self.action_std = nn.Parameter(torch.ones(action_dim), requires_grad=True)
+        self.log_action_std = nn.Parameter(torch.zeros(action_dim), requires_grad=True)
+        
+        print(f"[Student Policy] Using log_std (DEXTRAH-style, prevents collapse)")
+        print(f"[Student Policy] Initial std: {torch.exp(self.log_action_std).mean().item():.3f}")
         
     def forward(self, proprio: torch.Tensor, rgbd: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -189,8 +194,10 @@ class VisionStudentPolicy(nn.Module):
         # MLP
         action_mean = self.mlp(combined)
         
-        # Expand action_std to batch size
-        action_std = self.action_std.unsqueeze(0).expand_as(action_mean)
+        # DEXTRAH-style: exp(log_std) to ensure std > 0 and prevent collapse
+        # No clamp - let sigma_loss guide the value to match teacher (σ ≈ 0.8-4.0)
+        action_std = torch.exp(self.log_action_std)
+        action_std = action_std.unsqueeze(0).expand_as(action_mean)
         
         return action_mean, action_std
     

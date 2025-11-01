@@ -153,11 +153,21 @@ def evaluate_policy(env, student, num_episodes: int, device: str):
     std_reward = torch.tensor(episode_rewards).std().item()
     mean_length = sum(episode_lengths) / len(episode_lengths)
     
+    # Calculate success rate (reward > 2000 usually means success)
+    num_success = sum(1 for r in episode_rewards if r > 2000)
+    success_rate = num_success / len(episode_rewards) * 100
+    
+    # Calculate reward per step (efficiency metric)
+    reward_per_step = [r / l for r, l in zip(episode_rewards, episode_lengths) if l > 0]
+    mean_reward_per_step = sum(reward_per_step) / len(reward_per_step) if len(reward_per_step) > 0 else 0.0
+    
     # Print results (unified naming: Episode Reward = cumulative total reward per episode)
     print(f"\n{'='*80}")
-    print(f"EVALUATION RESULTS (Episode Reward = Cumulative Total Reward)")
+    print(f"EVALUATION RESULTS")
     print(f"{'='*80}")
     print(f"Episodes: {num_episodes}")
+    print(f"Success Rate: {success_rate:.1f}% ({num_success}/{num_episodes})")  # Primary metric
+    print(f"Reward per Step: {mean_reward_per_step:.2f}")  # NEW: Efficiency metric
     print(f"Episode Reward Mean: {mean_reward:.2f} ± {std_reward:.2f}")
     print(f"Episode Reward Median: {sorted(episode_rewards)[len(episode_rewards)//2]:.2f}")
     print(f"Episode Reward Min: {min(episode_rewards):.2f}")

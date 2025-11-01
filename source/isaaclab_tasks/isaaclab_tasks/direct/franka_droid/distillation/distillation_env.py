@@ -23,6 +23,11 @@ class FrankaDroidDistillationEnvCfg(FrankaDroidEnvCfg):
     # Enable vision observations for student
     use_vision_observations: bool = True
     
+    # Enable early termination on success (critical for distillation!)
+    # This prevents data imbalance: too much "fine-tuning at goal" data
+    enable_early_termination: bool = True
+    early_termination_time: float = 0.5  # End episode after 0.5s at goal (relaxed from 1.0s)
+    
     # Disable visualization markers for training (saves GPU resources)
     enable_visualization_markers: bool = False
     

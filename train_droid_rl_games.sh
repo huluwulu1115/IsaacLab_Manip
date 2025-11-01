@@ -12,7 +12,7 @@ set -euo pipefail  # Exit on error, undefined variable, or pipe failure
 
 # Training parameters
 readonly GPU_ID=0
-readonly TASK="Isaac-DROID-Direct-v0"
+readonly TASK="Isaac-DROID-Direct-v1"
 readonly EXP_NAME="franka_droid_direct"
 readonly NUM_ENVS=4096
 

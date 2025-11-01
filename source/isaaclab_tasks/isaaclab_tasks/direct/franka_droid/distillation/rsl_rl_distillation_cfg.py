@@ -76,6 +76,7 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     beta_start_decay: int = 10_000   # Start linear decay
     beta_end_decay: int = 30_000     # End decay (pure student after this)
     beta_strategy: str = "linear"    # "step" (DEXTRAH) or "linear" (smoother, recommended)
+    beta_floor: float = 0.2           # Keep a minimum teacher ratio for stability
     
     # Experiment name
     experiment_name: str = "franka_droid_distillation"
@@ -122,6 +123,10 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     
     # Clip actions (match teacher)
     clip_actions: bool = True
+
+    # Student deployment controls
+    switch_to_deterministic_step: int = 40_000  # Step to stop sampling noise
+    post_switch_log_std: float = -1.5           # Clamp log_std after switch for low variance
     
     # Logging
     logger: str = "tensorboard"  # or "wandb"
