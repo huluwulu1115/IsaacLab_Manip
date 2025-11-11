@@ -35,6 +35,12 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--enable_early_termination",
+    action="store_true",
+    default=False,
+    help="Enable early termination when success is achieved (terminates immediately, no wait time)",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -96,6 +102,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+
+    # apply early termination settings
+    if hasattr(env_cfg, "enable_early_termination"):
+        env_cfg.enable_early_termination = args_cli.enable_early_termination
+        if args_cli.enable_early_termination:
+            print(f"[INFO] Early termination enabled (immediate termination on success)")
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)

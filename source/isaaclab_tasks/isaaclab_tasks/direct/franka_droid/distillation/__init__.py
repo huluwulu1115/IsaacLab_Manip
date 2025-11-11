@@ -8,34 +8,26 @@ Distillation package for vision-based policy learning.
 
 This package contains all components needed for teacher-student distillation:
 - Environment configuration with vision observations
-- Vision encoders (SimpleCNN, ResNet18)
+- Vision encoders (SimpleCNN, ResNet18, Transformer)
 - Student policy networks
-- RSL-RL distillation configuration
+- Distillation agent (Dextrah-style online DAgger)
 - Episode reward tracking utilities
 """
 
 from .distillation_env import FrankaDroidDistillationEnv, FrankaDroidDistillationEnvCfg
-from .rsl_rl_distillation_cfg import FrankaDroidDistillationRunnerCfg, FrankaDroidVisionStudentTeacherCfg
-from .vision_policy_network import VisionStudentPolicy, SimpleCNNEncoder
 from .vision_policy_resnet import VisionStudentPolicyResNet
 from .resnet_encoder import ResNet18RGBDEncoder, DexterahStyleEncoder
-from .episode_reward_tracker import EpisodeRewardTracker
+from .rsl_rl_distillation_cfg import FrankaDroidDistillationRunnerCfg
 
 __all__ = [
     # Environment
     "FrankaDroidDistillationEnv",
     "FrankaDroidDistillationEnvCfg",
-    # Configuration
+    # RSL-RL Config
     "FrankaDroidDistillationRunnerCfg",
-    "FrankaDroidVisionStudentTeacherCfg",
-    # Policies
-    "VisionStudentPolicy",
+    # Student Policies
     "VisionStudentPolicyResNet",
-    # Encoders
-    "SimpleCNNEncoder",
+    # Vision Encoders
     "ResNet18RGBDEncoder",
     "DexterahStyleEncoder",
-    # Utils
-    "EpisodeRewardTracker",
 ]
-

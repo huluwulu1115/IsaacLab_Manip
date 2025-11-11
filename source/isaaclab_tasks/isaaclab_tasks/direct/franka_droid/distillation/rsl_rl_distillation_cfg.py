@@ -36,18 +36,10 @@ class FrankaDroidVisionStudentTeacherCfg(RslRlDistillationStudentTeacherCfg):
     
     activation: str = "elu"
     
-    # Vision encoder configuration (for RGBD processing)
-    # RGB: (H=360, W=640, C=3) -> flatten to 691,200
-    # Depth: (H=360, W=640, C=1) -> flatten to 230,400
-    # Total: 921,600 dim (too large, need CNN encoder!)
-    
-    # Simple CNN encoder for RGBD
+    # Vision encoder configuration
     use_vision_encoder: bool = True
-    vision_encoder_type: str = "simple_cnn"  # or "resnet18"
+    vision_encoder_type: str = "resnet18"  # or "dextrah"
     vision_feature_dim: int = 256  # Compressed vision features
-    
-    # Input: RGB (3 channels) + Depth (1 channel) = 4 channels
-    # Output: vision_feature_dim
 
 
 @configclass  
@@ -61,7 +53,7 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     Key features:
     - Per-step updates (true online learning)
     - Beta scheduling (teacher→student transition)
-    - Configurable teacher loading
+    - Extended schedule based on empirical results
     """
     
     class_name: str = "DistillationRunner"
@@ -71,20 +63,17 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     max_iterations: int = 1000  # Distillation iterations
     save_interval: int = 50
     
-    # Beta schedule (improved over DEXTRAH)
-    # DEXTRAH uses step function (1.0→0.0 at 15k), we use linear decay for smoother transition
-    beta_start_decay: int = 10_000   # Start linear decay
-    beta_end_decay: int = 30_000     # End decay (pure student after this)
-    beta_strategy: str = "linear"    # "step" (DEXTRAH) or "linear" (smoother, recommended)
-    beta_floor: float = 0.2           # Keep a minimum teacher ratio for stability
+    # Beta schedule (extended based on empirical observation)
+    # Success rate drops too fast with original schedule
+    beta_start_decay: int = 15_000   # Start linear decay (延后)
+    beta_end_decay: int = 60_000     # End decay (延长，给更多学习时间)
+    beta_strategy: str = "linear"    # "step" or "linear"
     
     # Experiment name
     experiment_name: str = "franka_droid_distillation"
     run_name: str = "vision_student"
     
     # Observation groups for distillation
-    # "policy" = student observations (24D proprioception)
-    # "teacher" = teacher observations (41D state) for teacher labeling
     obs_groups: dict = {
         "policy": ["policy"],  # Student uses proprio only
         "teacher": ["teacher_obs"],  # Teacher uses full state
@@ -109,11 +98,11 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     seed: int = 42
     
     # Teacher checkpoint configuration
-    resume: bool = False  # Set to False for distillation (we load teacher separately)
+    resume: bool = False  # Set to False for distillation
     load_run: str = "2025-10-23_19-43-40"  # Teacher run directory
     load_checkpoint: str = "model_1499.pt"  # Teacher checkpoint
     
-    # Teacher policy configuration (loaded from teacher training config)
+    # Teacher policy configuration
     teacher_config: dict = {
         "num_observations": 41,  # Privileged state observations
         "num_actions": 8,  # Robot actions
@@ -123,15 +112,11 @@ class FrankaDroidDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     
     # Clip actions (match teacher)
     clip_actions: bool = True
-
-    # Student deployment controls
-    switch_to_deterministic_step: int = 40_000  # Step to stop sampling noise
-    post_switch_log_std: float = -1.5           # Clamp log_std after switch for low variance
     
     # Logging
-    logger: str = "tensorboard"  # or "wandb"
-    wandb_project: str = "isaaclab_droid"
+    logger: str = "wandb"  # or "wandb"
+    wandb_project: str = "franka_droid_distillation"
     
-    # Empirical normalization (use teacher's normalization stats)
+    # Empirical normalization
     empirical_normalization: bool = True
 

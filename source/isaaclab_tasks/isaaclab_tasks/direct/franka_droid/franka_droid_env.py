@@ -24,17 +24,22 @@ from isaaclab.sensors import Camera, CameraCfg, TiledCamera, TiledCameraCfg
 ASSET_PATH = Path(__file__).parent / "../../../../../assets"
 
 
-
 @configclass
 class BinaryJointPositionActionCfg:
     """Configuration for binary joint position control."""
+
     asset_name: str = MISSING
     joint_names: list[str] = MISSING
     open_command_expr: dict[str, float] = MISSING
     close_command_expr: dict[str, float] = MISSING
 
-    def __init__(self, asset_name: str, joint_names: list[str], 
-                 open_command_expr: dict[str, float], close_command_expr: dict[str, float]):
+    def __init__(
+        self,
+        asset_name: str,
+        joint_names: list[str],
+        open_command_expr: dict[str, float],
+        close_command_expr: dict[str, float],
+    ):
         self.asset_name = asset_name
         self.joint_names = joint_names
         self.open_command_expr = open_command_expr
@@ -44,13 +49,13 @@ class BinaryJointPositionActionCfg:
 @configclass
 class JointPositionActionCfg:
     """Configuration for joint position control."""
+
     asset_name: str = MISSING
     joint_names: list[str] = MISSING
     scale: float = MISSING
     use_default_offset: bool = True
 
-    def __init__(self, asset_name: str, joint_names: list[str], 
-                 scale: float, use_default_offset: bool = True):
+    def __init__(self, asset_name: str, joint_names: list[str], scale: float, use_default_offset: bool = True):
         self.asset_name = asset_name
         self.joint_names = joint_names
         self.scale = scale
@@ -64,23 +69,23 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     Old version of the environment, using the old Franka Panda robotiq 2f-85 gripper usd
     There are some issue with the old usd.
     """
-    
+
     episode_length_s = 5.0
     decimation = 2
     action_space = 8
     observation_space = 0
     state_space = 0
-    
+
     # Sim2Real Configuration
     use_vision_observations = False  # True for student (vision), False for teacher (state)
-    
+
     # Distillation Configuration
     enable_early_termination = False  # True for distillation (balance data), False for RL training
     early_termination_time = 1.0  # Time (seconds) to stay at goal before terminating
-    
+
     # Visualization Configuration
     enable_visualization_markers = True  # Set to False to disable EE/goal markers (saves GPU resources)
-    
+
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,
         render_interval=decimation,
@@ -99,10 +104,8 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
         ),
     )
 
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=2.5, replicate_physics=True
-    )
-    
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
+
     # Action configuration (simplified)
     arm_action_scale: float = 0.5
     """Scale factor for arm joint position actions."""
@@ -110,7 +113,7 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     """Gripper open position in radians (0°)."""
     gripper_close_pos: float = np.pi / 4
     """Gripper close position in radians (45°)."""
-    
+
     # Robot: Let USD define physics parameters (v1 feature!)
     robot = ArticulationCfg(
         prim_path="/World/envs/env_.*/robot",
@@ -176,21 +179,18 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
         scale=0.5,
         use_default_offset=True,
     )
-    
+
     gripper_action = BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["finger_joint"],
         open_command_expr={"finger_joint": 0.0},
-        close_command_expr={"finger_joint": np.pi/4},
+        close_command_expr={"finger_joint": np.pi / 4},
     )
 
     objects = [
         RigidObjectCfg(
             prim_path="/World/envs/env_.*/Object_0",
-            init_state=RigidObjectCfg.InitialStateCfg(
-                pos=(0.5, 0, 0.055),
-                rot=(1.0, 0.0, 0.0, 0.0)
-            ),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0, 0.055), rot=(1.0, 0.0, 0.0, 0.0)),
             spawn=sim_utils.UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
                 scale=(0.8, 0.8, 0.8),
@@ -205,7 +205,7 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
             ),
         ),
     ]
-    
+
     object = objects[0]
 
     # Wrist camera with RGBD for sim2real transfer
@@ -214,9 +214,7 @@ class FrankaDroidEnvCfg(DirectRLEnvCfg):
     wrist_cam: TiledCameraCfg = TiledCameraCfg(
         prim_path="/World/envs/env_.*/robot/Gripper/Robotiq_2F_85/base_link/wrist_cam",
         offset=TiledCameraCfg.OffsetCfg(
-            pos=(0.011, -0.031, -0.074), 
-            rot=(-0.420, 0.570, 0.576, -0.409), 
-            convention="opengl"
+            pos=(0.011, -0.031, -0.074), rot=(-0.420, 0.570, 0.576, -0.409), convention="opengl"
         ),
         data_types=["rgb", "distance_to_camera"],  # RGB + Depth (like DEXTRAH uses ["rgb", "depth"])
         spawn=sim_utils.PinholeCameraCfg(
@@ -237,22 +235,22 @@ class FrankaDroidEnv(DirectRLEnv):
     """
     Franka DROID environment v1 - Complete version with USD physics debugging.
 
-    
+
     A manipulation environment featuring a Franka Panda robot with Robotiq 2F-85 gripper.
     The robot must grasp a cube and lift it to randomly sampled goal positions.
-    
-    
+
+
     Observation Space:
     - Teacher mode (41-dim): joint_pos(8) + joint_vel(8) + obj_pose(7) + ee_pose(7) + goal_pos(3) + actions(8)
     - Student mode (24-dim): joint_pos(8) + joint_vel(8) + actions(8) + RGBD camera
-    
+
     Eureka Reward Components:
     - Reaching: Encourages end-effector to approach object
     - Lifting: Rewards raising object above minimal height
     - Goal tracking (coarse): Guides lifted object to goal position
     - Goal tracking (fine): Precise positioning near goal
     - Regularization: Action smoothness and velocity penalties (curriculum-based)
-    
+
     Eureka Integration:
     This environment is compatible with Eureka for automatic reward function design.
     Key attributes available for custom reward functions:
@@ -267,93 +265,9 @@ class FrankaDroidEnv(DirectRLEnv):
     """
 
     cfg: FrankaDroidEnvCfg
-    
+
     def __init__(self, cfg: FrankaDroidEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-
-        # Print joint information
-        print("\n" + "="*80)
-        print("🤖 FRANKA ROBOTIQ Robot Configuration - v0")
-        print("="*80)
-        
-        print(f"\n📊 Basic Info:")
-        print(f"  Joints: {self._robot.num_joints} | Bodies: {self._robot.num_bodies}")
-        print(f"  Actuators: {', '.join(self._robot.actuators.keys())}")
-        
-        print(f"\n📋 Joint List ({self._robot.num_joints} joints):")
-        for i in range(self._robot.num_joints):
-            print(f"  [{i:2d}] {self._robot.joint_names[i]}")
-        
-        print(f"\n🎯 Default Joint Positions:")
-        default_pos = self._robot.data.default_joint_pos[0]
-        for i, name in enumerate(self._robot.joint_names):
-            deg = default_pos[i].item() * 57.2958
-            print(f"  [{i:2d}] {name:<25}: {default_pos[i].item():>7.3f} rad ({deg:>7.2f}°)")
-        
-        print(f"\n📏 Joint Limits (rad):")
-        lower_limits = self._robot.data.soft_joint_pos_limits[0, :, 0]
-        upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: [{lower_limits[i].item():>7.3f}, {upper_limits[i].item():>7.3f}]")
-        
-        print(f"\n⚙️  Joint Stiffness:")
-        stiffness = self._robot.data.joint_stiffness[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {stiffness[i].item():>10.2f}")
-        
-        print(f"\n🔧 Joint Damping:")
-        damping = self._robot.data.joint_damping[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {damping[i].item():>10.4f}")
-        
-        print(f"\n🏃 Velocity Limits (rad/s):")
-        vel_limits = self._robot.data.joint_vel_limits[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {vel_limits[i].item():>10.4f}")
-        
-        print(f"\n💪 Effort Limits (Nm):")
-        effort_limits = self._robot.data.joint_effort_limits[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {effort_limits[i].item():>10.2f}")
-        
-        print(f"\n🦾 Body List ({self._robot.num_bodies} bodies):")
-        for i, name in enumerate(self._robot.body_names):
-            print(f"  [{i:2d}] {name}")
-        
-        # Armature (inertia compensation)
-        print(f"\n🔩 Joint Armature (Inertia Compensation):")
-        armature = self._robot.data.joint_armature[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {armature[i].item():>10.6f}")
-        
-        # Friction
-        print(f"\n⚡ Joint Friction:")
-        friction = self._robot.data.joint_friction[0]
-        for i, name in enumerate(self._robot.joint_names):
-            print(f"  [{i:2d}] {name:<25}: {friction[i].item():>10.6f}")
-        
-        # Actuator information
-        print(f"\n🎮 Actuator Details:")
-        for actuator_name, actuator in self._robot.actuators.items():
-            print(f"  {actuator_name}:")
-            print(f"    Joint names: {actuator.joint_names}")
-            print(f"    Stiffness: {actuator.stiffness}")
-            print(f"    Damping: {actuator.damping}")
-            print(f"    Effort limit: {actuator.effort_limit}")
-            print(f"    Velocity limit: {actuator.velocity_limit}")
-        
-        # Gripper joints identification
-        print(f"\n🤏 Gripper Joint Identification:")
-        gripper_joints = []
-        for i, name in enumerate(self._robot.joint_names):
-            if 'finger' in name.lower() or 'gripper' in name.lower() or 'knuckle' in name.lower():
-                gripper_joints.append((i, name))
-        for idx, name in gripper_joints:
-            is_controlled = idx == self.gripper_joint_index if hasattr(self, 'gripper_joint_index') else False
-            control_mark = " ← Main control joint" if is_controlled else ""
-            print(f"  [{idx:2d}] {name:<25} | Stiff: {stiffness[idx].item():>8.2f} | Damp: {damping[idx].item():>8.4f}{control_mark}")
-        
-        print("="*80 + "\n")
 
         # Configure observation and action spaces
         self._compute_observation_space_size()
@@ -368,17 +282,14 @@ class FrankaDroidEnv(DirectRLEnv):
         self.robot_dof_upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1].to(device=self.device)
         self.robot_dof_range = self.robot_dof_upper_limits - self.robot_dof_lower_limits
         self.robot_dof_range = torch.where(
-             self.robot_dof_range < 1e-6, torch.ones_like(self.robot_dof_range), self.robot_dof_range
+            self.robot_dof_range < 1e-6, torch.ones_like(self.robot_dof_range), self.robot_dof_range
         )
-        
+
         # Joint control targets
         self.robot_dof_targets = self._robot.data.default_joint_pos.clone()
 
         # Find joint indices for arm and gripper
-        self.arm_joint_indices = [
-            self._robot.find_joints(f"panda_joint{i}")[0][0] 
-            for i in range(1, 8)
-        ]
+        self.arm_joint_indices = [self._robot.find_joints(f"panda_joint{i}")[0][0] for i in range(1, 8)]
         self.gripper_joint_index = self._robot.find_joints("finger_joint")[0][0]
 
         # ============================================================================
@@ -390,7 +301,7 @@ class FrankaDroidEnv(DirectRLEnv):
         self.prev_actions = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self.action_delta = torch.zeros_like(self.prev_actions)
         self.prev_gripper_joint_pos = torch.zeros(self.num_envs, 2, device=self.device)
-        
+
         # Curriculum learning counter
         self.step_count = 0
 
@@ -410,7 +321,7 @@ class FrankaDroidEnv(DirectRLEnv):
 
         panda_link8_bodies = self._robot.find_bodies("panda_link8")
         self.hand_body_idx = panda_link8_bodies[0][0]
-        
+
         # Sample initial goals
         all_env_ids = torch.arange(self.num_envs, device=self.device)
         self._sample_goal(all_env_ids)
@@ -423,7 +334,7 @@ class FrankaDroidEnv(DirectRLEnv):
             frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/ee_frame")
             frame_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
             self.ee_frame_marker = VisualizationMarkers(frame_cfg)
-            
+
             # Sphere marker at EE position
             ee_dot_cfg = VisualizationMarkersCfg(
                 markers={
@@ -432,21 +343,29 @@ class FrankaDroidEnv(DirectRLEnv):
                         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
                     ),
                 },
-                prim_path="/Visuals/ee_dot"
+                prim_path="/Visuals/ee_dot",
             )
             self.ee_dot_marker = VisualizationMarkers(ee_dot_cfg)
-            
+
             # Goal position marker (coordinate frame showing target position)
             goal_frame_cfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/goal_frame")
             goal_frame_cfg.markers["frame"].scale = (0.08, 0.08, 0.08)
             self.goal_marker = VisualizationMarkers(goal_frame_cfg)
-            
+
             print("[INFO] Visualization markers enabled")
         else:
             self.ee_frame_marker = None
             self.ee_dot_marker = None
             self.goal_marker = None
             print("[INFO] Visualization markers disabled (saves GPU resources)")
+
+        # ============================================================================
+        # RL Games Compatibility Attributes (for Dextrah-style distillation)
+        # ============================================================================
+        # These attributes are required by RL Games distillation agent
+        self.num_actions = self.cfg.action_space  # Action dimension (8)
+        self.num_observations = 24  # Student obs: joint_pos(8) + joint_vel(8) + prev_actions(8)
+        self.num_teacher_observations = 41  # Teacher obs: student(24) + privileged(17)
 
     def _sample_goal(self, env_ids: torch.Tensor):
         """Sample goal positions: x∈[0.4,0.6], y∈[-0.25,0.25], z∈[0.25,0.5]."""
@@ -456,7 +375,7 @@ class FrankaDroidEnv(DirectRLEnv):
         local_goals[:, 0] = sample_uniform(0.4, 0.6, (n_envs,), device=self.device)
         local_goals[:, 1] = sample_uniform(-0.25, 0.25, (n_envs,), device=self.device)
         local_goals[:, 2] = sample_uniform(0.25, 0.5, (n_envs,), device=self.device)
-        
+
         # Transform to world frame by adding environment origins
         self.goal_pos_w[env_ids] = local_goals + self.scene.env_origins[env_ids]
 
@@ -479,7 +398,7 @@ class FrankaDroidEnv(DirectRLEnv):
     def _reconfigure_gym_spaces(self):
         """Reconfigure gym spaces with computed observation space size."""
         self.cfg.observation_space = self.computed_obs_size
-        
+
         self.single_observation_space = gym.spaces.Dict()
         self.single_observation_space["policy"] = spec_to_gym_space(self.cfg.observation_space)
         self.single_action_space = spec_to_gym_space(self.cfg.action_space)
@@ -496,8 +415,10 @@ class FrankaDroidEnv(DirectRLEnv):
 
     def _compute_observation_space_size(self):
         """Compute observation space size based on observation mode."""
-        action_space_int = int(self.cfg.action_space) if not isinstance(self.cfg.action_space, int) else self.cfg.action_space
-        
+        action_space_int = (
+            int(self.cfg.action_space) if not isinstance(self.cfg.action_space, int) else self.cfg.action_space
+        )
+
         if self.cfg.use_vision_observations:
             # Student mode: proprioception only (for use with RGBD camera images)
             # 8 joint pos + 8 joint vel + 8 actions = 24
@@ -513,23 +434,23 @@ class FrankaDroidEnv(DirectRLEnv):
     def _setup_scene(self):
         """Setup scene with single object and optional camera."""
         self._robot = Articulation(self.cfg.robot)
-        
+
         # Only create camera if in vision mode
         # Use TiledCamera for better multi-environment support
         if self.cfg.use_vision_observations:
             self._wrist_cam = TiledCamera(self.cfg.wrist_cam)
             self.scene.sensors["wrist_cam"] = self._wrist_cam
             print(f"[INFO] Using TiledCamera (DEXTRAH-style, solves descriptor allocation)")
-        
+
         # Create single object
         self._object = RigidObject(self.cfg.object)
         self._objects = [self._object]
         self.num_objects = 1
-        
+
         # Register entities with scene
         self.scene.articulations["robot"] = self._robot
         self.scene.rigid_objects["object"] = self._object
-        
+
         # Table
         table_cfg = sim_utils.UsdFileCfg(
             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
@@ -540,7 +461,7 @@ class FrankaDroidEnv(DirectRLEnv):
             translation=(0.525, 0.0, 0.0),
             orientation=(0.707, 0.0, 0.0, 0.707),
         )
-        
+
         # Ground plane
         ground_cfg = sim_utils.GroundPlaneCfg()
         ground_cfg.func("/World/GroundPlane", ground_cfg, translation=(0.0, 0.0, -1.05))
@@ -559,7 +480,7 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # Squash gripper action for smoother control
         self.actions[:, 7] = 0.04 * torch.tanh(self.actions[:, 7])
-        
+
         # Compute action rate for penalty calculation
         self.action_delta = self.actions - self.prev_actions
         self.prev_actions[:] = self.actions
@@ -586,7 +507,7 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # Start with default positions
         targets = default_joint_pos.clone()
-        
+
         # Arm control: Apply scaled actions to arm joints (scale=0.5)
         for i, joint_idx in enumerate(self.arm_joint_indices):
             targets[:, joint_idx] = default_joint_pos[:, joint_idx] + self.cfg.arm_action.scale * self.actions[:, i]
@@ -596,9 +517,9 @@ class FrankaDroidEnv(DirectRLEnv):
         close_pos = self.cfg.gripper_action.close_command_expr["finger_joint"]
         open_pos = self.cfg.gripper_action.open_command_expr["finger_joint"]
         targets[:, self.gripper_joint_index] = torch.where(
-            is_closing, 
+            is_closing,
             torch.full((self.num_envs,), close_pos, device=self.device),
-            torch.full((self.num_envs,), open_pos, device=self.device)
+            torch.full((self.num_envs,), open_pos, device=self.device),
         )
 
         # Clamp to joint limits and apply
@@ -608,32 +529,32 @@ class FrankaDroidEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute termination and truncation conditions."""
         self._compute_intermediate_values()
-        
+
         # Terminate if object drops below minimum height
         obj_pos = self._objects[0].data.root_pos_w
         obj_dropped = obj_pos[:, 2] < -0.05
-        
+
         # NEW: Optional early termination on success (for better distillation data distribution)
         # Only enabled when cfg.enable_early_termination = True
         success_timeout = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        
+
         if self.cfg.enable_early_termination:
-            # Success: object lifted AND at goal position for sufficient time
-            lifted = obj_pos[:, 2] > self.minimal_height
-            at_goal = self._robot.data.dist_obj_goal < 0.10  # Within 10cm of goal (relaxed from 5cm)
-            success = lifted & at_goal
+            # Use success metric to determine if task is complete
+            # Success threshold: metric > 0.9 (reaching + lifting + goal tracking)
+            all_env_ids = torch.arange(self.num_envs, device=self.device)
+            success_metric = self.get_success_metric(all_env_ids)
             
-            # Track success time
-            if not hasattr(self, 'success_timer'):
-                self.success_timer = torch.zeros(self.num_envs, device=self.device)
+            # Immediate termination on success (no wait time)
+            success_timeout = success_metric > 0.9  # High threshold ensures all components are achieved
             
-            self.success_timer = torch.where(success, self.success_timer + self.dt, torch.zeros_like(self.success_timer))
-            
-            # Terminate after specified time at goal (prevents over-representation of fine-tuning)
-            success_timeout = self.success_timer > self.cfg.early_termination_time
-        
+            # Log success metrics
+            if "log" not in self.extras:
+                self.extras["log"] = {}
+            self.extras["log"]["eval/success_metric_mean"] = success_metric.mean()
+            self.extras["log"]["eval/success_rate"] = success_timeout.float().mean()
+
         terminated = self.terminated_buf.clone() | obj_dropped | success_timeout
-        
+
         # Truncate on episode timeout
         truncated = self.episode_length_buf >= self.max_episode_length - 1
 
@@ -643,10 +564,10 @@ class FrankaDroidEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         """
         Oracle reward function for Eureka.
-        
+
         This function will be automatically renamed to _get_rewards_oracle() by Eureka,
         and compared against LLM-generated reward functions in _get_rewards_eureka().
-        
+
         Available data for Eureka reward functions:
         - self._robot.data.ee_pos_w: End-effector position in world frame (N, 3)
         - self._robot.data.obj_pos_w: Object position in world frame (N, 3)
@@ -664,15 +585,15 @@ class FrankaDroidEnv(DirectRLEnv):
         - self.step_count: Global curriculum step counter (int)
         """
         self._compute_intermediate_values()  # Update intermediate values
-        
+
         # Get hand position and orientation
         hand_pos = self._robot.data.body_pos_w[:, self.hand_body_idx]
         hand_quat = self._robot.data.body_quat_w[:, self.hand_body_idx]
         offset = self.ee_offset.unsqueeze(0).repeat(hand_pos.shape[0], 1)
-        
+
         self._robot.data.ee_pos_w = hand_pos + quat_apply(hand_quat, offset)
         self._robot.data.obj_pos_w = self._objects[0].data.root_pos_w
-        
+
         # Visualize markers (only if enabled)
         if self.cfg.enable_visualization_markers:
             # Visualize EE orientation frame above Franka base (for better visibility)
@@ -680,10 +601,10 @@ class FrankaDroidEnv(DirectRLEnv):
             frame_pos = robot_base_pos.clone()
             frame_pos[:, 2] += 1.0  # Position 1.0m above robot base
             self.ee_frame_marker.visualize(frame_pos, hand_quat)
-            
+
             # Visualize EE position
             self.ee_dot_marker.visualize(self._robot.data.ee_pos_w)
-            
+
             # Visualize goal position (coordinate frame showing target location)
             # Use identity quaternion (no rotation) for the goal frame
             goal_quat = torch.zeros(self.num_envs, 4, device=self.device)
@@ -693,11 +614,11 @@ class FrankaDroidEnv(DirectRLEnv):
         # ============================================================================
         # Reward Components
         # ============================================================================
-        
+
         # 1. Reaching: Encourage EE to approach object (weight=1.0, std=0.1)
         self._robot.data.dist_ee_obj = torch.norm(self._robot.data.ee_pos_w - self._robot.data.obj_pos_w, dim=-1)
         reaching_reward = (1.0 - torch.tanh(self._robot.data.dist_ee_obj / 0.1)) * 1.0
-        
+
         # 2. Lifting: Reward for raising object above minimal height (weight=15.0)
         lifting_reward = (self._robot.data.obj_pos_w[:, 2] > self.minimal_height).float() * 15.0
 
@@ -718,9 +639,9 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # Total reward computation
         total_reward = (
-            reaching_reward +
-            lifting_reward +
-            goal_tracking
+            reaching_reward
+            + lifting_reward
+            + goal_tracking
             # goal_tracking_fine +
             # action_penalty +
             # joint_vel_penalty
@@ -731,15 +652,17 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # Log reward components for monitoring (step-level averages)
         if hasattr(self, "extras"):
-            self.extras.setdefault("log", {}).update({
-                "Train/step_reward_reaching":     reaching_reward.mean(),
-                "Train/step_reward_lifting":      lifting_reward.mean(),
-                "Train/step_reward_goal_tracking": goal_tracking.mean(),
-                # "Train/step_reward_goal_fine":    goal_tracking_fine.mean(),
-                # "Train/step_penalty_action":      action_penalty.mean(),
-                # "Train/step_penalty_velocity":    joint_vel_penalty.mean(),
-                "Train/step_reward_total":        total_reward.mean(),  # Step average (for reference)
-            })
+            self.extras.setdefault("log", {}).update(
+                {
+                    "Train/step_reward_reaching": reaching_reward.mean(),
+                    "Train/step_reward_lifting": lifting_reward.mean(),
+                    "Train/step_reward_goal_tracking": goal_tracking.mean(),
+                    # "Train/step_reward_goal_fine":    goal_tracking_fine.mean(),
+                    # "Train/step_penalty_action":      action_penalty.mean(),
+                    # "Train/step_penalty_velocity":    joint_vel_penalty.mean(),
+                    "Train/step_reward_total": total_reward.mean(),  # Step average (for reference)
+                }
+            )
 
         return total_reward
 
@@ -756,29 +679,29 @@ class FrankaDroidEnv(DirectRLEnv):
         hand_pos = self._robot.data.body_pos_w[env_ids, self.hand_body_idx]
         hand_quat = self._robot.data.body_quat_w[env_ids, self.hand_body_idx]
         offset = self.ee_offset.unsqueeze(0).repeat(env_ids.shape[0], 1)
-        
+
         # Compute end-effector position
         ee_pos = hand_pos + quat_apply(hand_quat, offset)
-        
+
         # Get object position
         obj_pos = self._objects[0].data.root_pos_w[env_ids]
-        
+
         # Compute distances
         reach_dist = torch.norm(ee_pos - obj_pos, p=2, dim=-1)
-        
+
         # Check for bad states
         large_mask = reach_dist > self.cfg.large_reach_threshold
         nan_mask = torch.isnan(obj_pos).any(dim=1) | torch.isnan(ee_pos).any(dim=1)
-        
+
         # Log bad state ratio if computing for all environments
         if env_ids.shape[0] == self.num_envs:
             if "log" not in self.extras:
                 self.extras["log"] = {}
             self.extras["log"]["state/large_reach_ratio"] = large_mask.float().mean()
-        
+
         # Combine bad masks
         bad_mask = large_mask | nan_mask
-        
+
         # Reset bad environments
         if bad_mask.any():
             bad_ids = env_ids[bad_mask]
@@ -787,12 +710,13 @@ class FrankaDroidEnv(DirectRLEnv):
 
     def get_success_metric(self, env_ids: torch.Tensor) -> torch.Tensor:
         """
-        Compute success metric as combination of reaching and lifting.
-        
+        Compute success metric as combination of reaching, lifting, and goal tracking.
+
         Returns:
             Success metric in [0, 1] where:
-            - 0.0-0.5: Reaching component (proximity to object)
-            - 0.0-0.5: Lifting component (object height)
+            - 0.0-0.33: Reaching component (proximity to object)
+            - 0.0-0.33: Lifting component (object height)
+            - 0.0-0.34: Goal tracking component (proximity to goal)
         """
         hand_pos = self._robot.data.body_pos_w[:, self.hand_body_idx][env_ids]
         hand_quat = self._robot.data.body_quat_w[:, self.hand_body_idx][env_ids]
@@ -800,10 +724,17 @@ class FrankaDroidEnv(DirectRLEnv):
         offset = self.ee_offset.unsqueeze(0).repeat(env_ids.shape[0], 1)
         ee_pos = hand_pos + quat_apply(hand_quat, offset)
 
-        reaching_metric = (1 - torch.tanh(torch.norm(ee_pos - obj_pos, dim=-1))) * 0.5
-        lifting_metric = torch.clamp(obj_pos[:, 2] / 0.2, 0, 1.0) * 0.5
+        # Reaching: proximity to object
+        reaching_metric = (1 - torch.tanh(torch.norm(ee_pos - obj_pos, dim=-1))) * 0.33
+        
+        # Lifting: object above minimal height
+        lifting_metric = torch.clamp(obj_pos[:, 2] / 0.2, 0, 1.0) * 0.33
+        
+        # Goal tracking: object proximity to goal position
+        goal_dist = torch.norm(obj_pos - self.goal_pos_w[env_ids], dim=-1)
+        goal_metric = (1 - torch.tanh(goal_dist / 0.3)) * 0.34
 
-        return reaching_metric + lifting_metric
+        return reaching_metric + lifting_metric + goal_metric
 
     def post_physics_step(self):
         """Post-physics step hook to update curriculum counter."""
@@ -850,9 +781,9 @@ class FrankaDroidEnv(DirectRLEnv):
         self.actions[env_ids] = 0.0
         self.prev_actions[env_ids] = 0.0
         self.action_delta[env_ids] = 0.0
-        
+
         # Reset success timer for early termination
-        if hasattr(self, 'success_timer'):
+        if hasattr(self, "success_timer"):
             self.success_timer[env_ids] = 0.0
 
     def _get_observations(self) -> dict:
@@ -863,28 +794,30 @@ class FrankaDroidEnv(DirectRLEnv):
 
         # === PROPRIOCEPTION (ALWAYS INCLUDED) ===
         # 1. Relative joint positions (7 arm + 1 gripper)
-        joint_pos_list = [self._robot.data.joint_pos[:, idx:idx+1] for idx in self.arm_joint_indices]
-        joint_pos_list.append(self._robot.data.joint_pos[:, self.gripper_joint_index:self.gripper_joint_index+1])
-        
-        default_joint_pos_list = [self._robot.data.default_joint_pos[:, idx:idx+1] for idx in self.arm_joint_indices]
-        default_joint_pos_list.append(self._robot.data.default_joint_pos[:, self.gripper_joint_index:self.gripper_joint_index+1])
-        
+        joint_pos_list = [self._robot.data.joint_pos[:, idx : idx + 1] for idx in self.arm_joint_indices]
+        joint_pos_list.append(self._robot.data.joint_pos[:, self.gripper_joint_index : self.gripper_joint_index + 1])
+
+        default_joint_pos_list = [
+            self._robot.data.default_joint_pos[:, idx : idx + 1] for idx in self.arm_joint_indices
+        ]
+        default_joint_pos_list.append(
+            self._robot.data.default_joint_pos[:, self.gripper_joint_index : self.gripper_joint_index + 1]
+        )
+
         joint_pos = torch.cat(joint_pos_list, dim=-1)
         default_joint_pos = torch.cat(default_joint_pos_list, dim=-1)
         obs_components.append(joint_pos - default_joint_pos)
-        
+
         # 2. Joint velocities (7 arm + 1 gripper)
-        joint_vel_list = [self._robot.data.joint_vel[:, idx:idx+1] for idx in self.arm_joint_indices]
-        joint_vel_list.append(self._robot.data.joint_vel[:, self.gripper_joint_index:self.gripper_joint_index+1])
+        joint_vel_list = [self._robot.data.joint_vel[:, idx : idx + 1] for idx in self.arm_joint_indices]
+        joint_vel_list.append(self._robot.data.joint_vel[:, self.gripper_joint_index : self.gripper_joint_index + 1])
         obs_components.append(torch.cat(joint_vel_list, dim=-1))
-        
+
         # === PRIVILEGED STATE (FOR TEACHER LABELING) ===
         # Always compute full state for teacher, regardless of mode
         # Get robot root frame for transformations
-        robot_pos_w, robot_quat_w = self._squeeze_robot_frame(
-            self._robot.data.root_pos_w, self._robot.data.root_quat_w
-        )
-        
+        robot_pos_w, robot_quat_w = self._squeeze_robot_frame(self._robot.data.root_pos_w, self._robot.data.root_quat_w)
+
         # 3. Object position in robot frame (PRIVILEGED)
         obj_pos_w, obj_quat_w = self._squeeze_robot_frame(
             self._objects[0].data.root_pos_w, self._objects[0].data.root_quat_w
@@ -894,19 +827,21 @@ class FrankaDroidEnv(DirectRLEnv):
             # 4. Object orientation in robot frame (PRIVILEGED)
             self._transform_world_to_robot_frame_quat(obj_quat_w, robot_quat_w),
         ]
-        
+
         # 5. End-effector position in robot frame (PRIVILEGED)
         hand_pos = self._robot.data.body_pos_w[:, self.hand_body_idx]
         hand_quat = self._robot.data.body_quat_w[:, self.hand_body_idx]
         offset = self.ee_offset.unsqueeze(0).repeat(hand_pos.shape[0], 1)
         ee_pos_w = hand_pos + quat_apply(hand_quat, offset)
-        privileged_obs.extend([
-            self._transform_world_to_robot_frame(ee_pos_w, robot_pos_w, robot_quat_w),
-            # 6. End-effector orientation in robot frame (PRIVILEGED)
-            self._transform_world_to_robot_frame_quat(hand_quat, robot_quat_w),
-            # 7. Goal position in robot frame (PRIVILEGED)
-            self._transform_world_to_robot_frame(self.goal_pos_w, robot_pos_w, robot_quat_w),
-        ])
+        privileged_obs.extend(
+            [
+                self._transform_world_to_robot_frame(ee_pos_w, robot_pos_w, robot_quat_w),
+                # 6. End-effector orientation in robot frame (PRIVILEGED)
+                self._transform_world_to_robot_frame_quat(hand_quat, robot_quat_w),
+                # 7. Goal position in robot frame (PRIVILEGED)
+                self._transform_world_to_robot_frame(self.goal_pos_w, robot_pos_w, robot_quat_w),
+            ]
+        )
 
         # 8. Previous actions (ALWAYS INCLUDED)
         obs_components.append(self.actions)
@@ -917,7 +852,7 @@ class FrankaDroidEnv(DirectRLEnv):
             student_obs = torch.cat(obs_components, dim=-1)
             student_obs = torch.clamp(student_obs, -100.0, 100.0)
             student_obs = torch.nan_to_num(student_obs, nan=0.0, posinf=0.0, neginf=0.0)
-            
+
             # Teacher obs: full state (41D) - for labeling only
             # CRITICAL: Must match the order used in teacher mode!
             # Teacher mode order: [joint_pos, joint_vel, prev_actions, privileged_obs]
@@ -925,7 +860,7 @@ class FrankaDroidEnv(DirectRLEnv):
             teacher_obs = torch.cat(teacher_obs_components, dim=-1)
             teacher_obs = torch.clamp(teacher_obs, -100.0, 100.0)
             teacher_obs = torch.nan_to_num(teacher_obs, nan=0.0, posinf=0.0, neginf=0.0)
-            
+
             result = {"policy": student_obs, "teacher_obs": teacher_obs}
         else:
             # Teacher mode: full state (41D)
@@ -934,7 +869,7 @@ class FrankaDroidEnv(DirectRLEnv):
             obs = torch.clamp(obs, -100.0, 100.0)
             obs = torch.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
             result = {"policy": obs}
-        
+
         # === VISION (STUDENT MODE ONLY) ===
         if self.cfg.use_vision_observations:
             # Get RGBD data (scene automatically updates sensors)
@@ -942,20 +877,21 @@ class FrankaDroidEnv(DirectRLEnv):
             result["wrist_cam_rgb"] = self._wrist_cam.data.output["rgb"]
             # Depth: (num_envs, height, width, 1), range [0.01, 10.0] meters
             result["wrist_cam_depth"] = self._wrist_cam.data.output["distance_to_camera"]
-        
+
         return result
 
-    
     def _squeeze_robot_frame(self, pos: torch.Tensor, quat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Helper to squeeze robot root pose dimensions if needed."""
         if pos.dim() == 3:
             return pos[:, 0, :], quat[:, 0, :]
         return pos, quat
 
-    def _transform_world_to_robot_frame(self, pos_w: torch.Tensor, robot_pos_w: torch.Tensor, robot_quat_w: torch.Tensor) -> torch.Tensor:
+    def _transform_world_to_robot_frame(
+        self, pos_w: torch.Tensor, robot_pos_w: torch.Tensor, robot_quat_w: torch.Tensor
+    ) -> torch.Tensor:
         """Transform world position to robot root frame."""
         return quat_apply_inverse(robot_quat_w, pos_w - robot_pos_w)
-    
+
     def _transform_world_to_robot_frame_quat(self, quat_w: torch.Tensor, robot_quat_w: torch.Tensor) -> torch.Tensor:
         """Transform world quaternion to robot root frame."""
         return quat_mul(quat_conjugate(robot_quat_w), quat_w)
