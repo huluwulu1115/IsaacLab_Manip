@@ -15,13 +15,13 @@ SEED=42
 DEVICE="cuda:0"
 TASK="Isaac-DROID-Distillation-v0"
 
-# Early Termination (True/False)
-EARLY_TERMINATION=True
+# Early Termination (true/false)
+EARLY_TERMINATION=false
 
 # Beta Schedule (Quickly modify to test different strategies)
 # Current Strategy: Fast transition + long imitation (15k-35k transition, 35k-100k pure student)
 BETA_START=15000
-BETA_END=35000    # 20k steps fast transition (vs 45k before)
+BETA_END=35000    # 20k steps fast transition
 # Other strategies examples:
 # Conservative: BETA_START=15000, BETA_END=60000 (45k steps transition)
 # Super fast: BETA_START=10000, BETA_END=25000 (15k steps transition)
@@ -67,7 +67,7 @@ echo -e "${GREEN}Franka DROID Vision Distillation${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 
-echo -e "${BLUE}配置:${NC}"
+echo -e "${BLUE}Parameters:${NC}"
 echo "  Task: $TASK"
 echo "  Num envs: $NUM_ENVS"
 echo "  Max steps: $MAX_STEPS"
@@ -75,7 +75,7 @@ echo "  Teacher: $TEACHER_RUN"
 echo "  Beta schedule: ${BETA_START}-${BETA_END} ($((BETA_END - BETA_START)) steps transition)"
 echo "  Target std: $TARGET_STD (overriding teacher's exploration std)"
 echo "  Loss type: $(if [ "$USE_KL_LOSS" = "true" ]; then echo "KL Divergence"; else echo "DEXTRAH Weighted MSE"; fi)"
-echo "  Early termination: $EARLY_TERMINATION"
+echo "  Early termination: $(if [ "$EARLY_TERMINATION" = "true" ]; then echo "Enabled"; else echo "Disabled"; fi)"
 echo "  Video recording: $(if [ "$ENABLE_VIDEO" = "true" ]; then echo "Enabled (every ${VIDEO_INTERVAL} steps, ${VIDEO_LENGTH} steps/video)"; else echo "Disabled"; fi)"
 echo "  Logging: W&B (optional)"
 echo ""
@@ -93,10 +93,14 @@ CMD="python -u scripts/reinforcement_learning/rsl_rl/train_vision_distillation.p
     --seed=$SEED \
     --load_run=$TEACHER_RUN \
     --checkpoint=$TEACHER_CHECKPOINT \
-    --early_termination=$EARLY_TERMINATION \
     --beta_start_decay=$BETA_START \
     --beta_end_decay=$BETA_END \
     --target_std=$TARGET_STD"
+
+# Add early termination flag if enabled
+if [ "$EARLY_TERMINATION" = "true" ]; then
+    CMD="$CMD --early_termination"
+fi
 
 # Add KL loss flag if enabled
 if [ "$USE_KL_LOSS" = "true" ]; then

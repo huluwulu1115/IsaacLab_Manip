@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import os
+import re
 import gymnasium as gym
 import torch
 import torch.nn as nn
@@ -28,6 +29,7 @@ from copy import deepcopy
 
 from isaaclab.app import AppLauncher
 
+
 parser = argparse.ArgumentParser(description="Train vision-based student policy via distillation")
 parser.add_argument("--task", type=str, default="Isaac-DROID-Distillation-v0")
 parser.add_argument("--num_envs", type=int, default=128)
@@ -35,8 +37,8 @@ parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max_steps", type=int, default=100_000)
 parser.add_argument("--load_run", type=str, required=True)
 parser.add_argument("--checkpoint", type=str, default="model_1499.pt")
-parser.add_argument("--early_termination", type=bool, default=True, 
-                    help="Enable early termination when success detected (default: True)")
+parser.add_argument("--early_termination", action="store_true", default=False,
+                    help="Enable early termination when success detected (pass flag to enable)")
 parser.add_argument("--beta_start_decay", type=int, default=None,
                     help="Step to start beta decay (default: use config value)")
 parser.add_argument("--beta_end_decay", type=int, default=None,
@@ -256,26 +258,42 @@ def evaluate_on_training_env(
     print(f"    Total Reward (ref): {mean_reward:.2f}")
     
     # Log eval metrics (video upload is handled by caller)
-    prefix = "teacher_baseline" if use_teacher_baseline else "eval"
-    wandb.log({
-        # Success metrics
-        f"{prefix}/success_rate": success_rate,
-        f"{prefix}/high_quality_rate": high_quality_rate,
-        
-        # R/step distribution (核心指标)
-        f"{prefix}/reward_per_step_mean": mean_r_per_step,
-        f"{prefix}/reward_per_step_median": median_r_per_step,
-        f"{prefix}/reward_per_step_max": max_r_per_step,
-        f"{prefix}/reward_per_step_min": min_r_per_step,
-        
-        # Length distribution
-        f"{prefix}/length_mean": mean_length,
-        f"{prefix}/length_median": median_length,
-        f"{prefix}/success_length_mean": mean_success_length,
-        
-        # Total reward (仅供参考)
-        f"{prefix}/total_reward_mean": mean_reward,
-    }, step=step)
+    if use_teacher_baseline:
+        # Teacher baseline: record to summary (constant reference) and one point at step=0
+        metrics = {
+            "teacher_baseline/success_rate": success_rate,
+            "teacher_baseline/high_quality_rate": high_quality_rate,
+            "teacher_baseline/reward_per_step_mean": mean_r_per_step,
+            "teacher_baseline/reward_per_step_median": median_r_per_step,
+            "teacher_baseline/length_mean": mean_length,
+            "teacher_baseline/total_reward_mean": mean_reward,
+        }
+        # Log to time series at step=0 (single point for reference)
+        wandb.log(metrics, step=step)
+        # Also log to run summary as constant reference values
+        wandb.run.summary.update(metrics)
+        print(f"  ℹ️  Teacher baseline recorded to summary (constant reference)")
+    else:
+        # Student eval: regular time series logging
+        wandb.log({
+            # Success metrics
+            f"eval/success_rate": success_rate,
+            f"eval/high_quality_rate": high_quality_rate,
+            
+            # R/step distribution (核心指标)
+            f"eval/reward_per_step_mean": mean_r_per_step,
+            f"eval/reward_per_step_median": median_r_per_step,
+            f"eval/reward_per_step_max": max_r_per_step,
+            f"eval/reward_per_step_min": min_r_per_step,
+            
+            # Length distribution
+            f"eval/length_mean": mean_length,
+            f"eval/length_median": median_length,
+            f"eval/success_length_mean": mean_success_length,
+            
+            # Total reward (仅供参考)
+            f"eval/total_reward_mean": mean_reward,
+        }, step=step)
     
     print(f"{'='*80}\n")
     
@@ -438,13 +456,15 @@ def main():
         num_episodes=num_eval_episodes,
         step=0,
         teacher=teacher,  # Pass teacher for step 0 baseline
-        video_dir=video_dir,
+        video_dir=video_dir,  # Record teacher baseline video
     )
     
     print(f"  Teacher baseline: Success={initial_results['success_rate']:.1f}%, R/step={initial_results['mean_r_per_step']:.2f}")
-    print(f"  (This is the performance target for student)\n")
-    
-    # Note: Step 0 video will be uploaded at step 10k (after it's fully written)
+    print(f"  (This is the performance target for student)")
+    if args_cli.video:
+        print(f"  ℹ️  Teacher baseline video will be uploaded at step 10k\n")
+    else:
+        print()
     
     # Reset environment after eval
     obs_dict, _ = env.reset()
@@ -637,19 +657,27 @@ def main():
                         video_name = os.path.basename(video_path)
                         print(f"     Uploading: {video_name} ({os.path.getsize(video_path)/1024:.1f} KB)")
                         
-                        # Determine step from filename or upload time
-                        if "step-0" in video_name or len(uploaded_videos) == 0:
-                            wandb_key = "videos/step_0_teacher_baseline"
-                            upload_step = 0
+                        # Extract step from filename using regex (same as final upload)
+                        match = re.search(r'step-(\d+)', video_name)
+                        if match:
+                            upload_step = int(match.group(1))
                         else:
-                            # Estimate step based on upload count
+                            # Fallback: estimate from number of uploaded videos
                             upload_step = len(uploaded_videos) * eval_interval
-                            wandb_key = f"videos/step_{upload_step}_student"
+                            print(f"     ⚠️  Could not extract step from filename, using fallback: {upload_step}")
+                        
+                        # Determine key based on step
+                        if upload_step == 0:
+                            # Teacher baseline - upload under teacher_baseline section
+                            wandb_key = "teacher_baseline/video"
+                        else:
+                            # Student progress - upload under eval section
+                            wandb_key = "eval/video"
                         
                         try:
                             wandb.log({wandb_key: wandb.Video(video_path, fps=30, format="mp4")}, step=upload_step)
                             uploaded_videos.add(video_path)
-                            print(f"     ✅ {video_name} uploaded")
+                            print(f"     ✅ {video_name} uploaded to {wandb_key} at step {upload_step}")
                         except Exception as e:
                             print(f"     ❌ Failed: {e}")
                     
@@ -739,15 +767,17 @@ def main():
                 match = re.search(r'step-(\d+)', video_name)
                 if match:
                     video_step = int(match.group(1))
-                    if video_step == 0:
-                        wandb_key = "videos/step_0_teacher_baseline"
-                    else:
-                        wandb_key = f"videos/step_{video_step}_student"
                 else:
                     video_step = step
-                    wandb_key = f"videos/step_{video_step}_final"
+                    print(f"     ⚠️  Could not extract step from filename, using final step: {video_step}")
                 
-                print(f"     Uploading: {video_name} ({os.path.getsize(video_path)/1024:.1f} KB) → {wandb_key}")
+                # Determine key based on step (consistent with training uploads)
+                if video_step == 0:
+                    wandb_key = "teacher_baseline/video"
+                else:
+                    wandb_key = "eval/video"
+                
+                print(f"     Uploading: {video_name} ({os.path.getsize(video_path)/1024:.1f} KB) → {wandb_key} (step={video_step})")
                 try:
                     wandb.log({wandb_key: wandb.Video(video_path, fps=30, format="mp4")}, step=video_step)
                     uploaded_videos.add(video_path)

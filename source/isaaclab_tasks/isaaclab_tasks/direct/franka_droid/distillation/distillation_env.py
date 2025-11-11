@@ -25,6 +25,7 @@ class FrankaDroidDistillationEnvCfg(FrankaDroidEnvCfg):
     
     # Enable early termination on success (critical for distillation!)
     # This prevents data imbalance: too much "fine-tuning at goal" data
+    # Can be overridden by --early_termination command line argument
     enable_early_termination: bool = True
     early_termination_time: float = 0.5  # End episode after 0.5s at goal (relaxed from 1.0s)
     
