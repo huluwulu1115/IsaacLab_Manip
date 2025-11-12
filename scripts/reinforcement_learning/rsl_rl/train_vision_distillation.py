@@ -5,29 +5,27 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """
-Vision-based Policy Distillation - DEXTRAH-aligned Implementation with improvements
-
-Usage:
-    python train_vision_distillation.py --task Isaac-DROID-Distillation-v0 \
-        --num_envs 128 --max_steps 100000 --load_run 2025-10-23_19-43-40 \
-        --checkpoint model_1499.pt --headless --enable_cameras
+Vision-based Policy Distillation
 """
 
-import argparse
-import os
-import re
-import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+import wandb
+import argparse
+import numpy as np
+import gymnasium as gym
+
 from datetime import datetime
 from pathlib import Path
-import glob
-import wandb
-import numpy as np
-from copy import deepcopy
-
 from isaaclab.app import AppLauncher
+
+# Import distillation utilities
+from distillation_utils import (
+    wait_for_video_stable,
+    upload_videos_to_wandb,
+)
 
 
 parser = argparse.ArgumentParser(description="Train vision-based student policy via distillation")
@@ -61,7 +59,6 @@ args_cli.enable_cameras = True
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import isaaclab_tasks
 from isaaclab_tasks.direct.franka_droid.distillation import (
     VisionStudentPolicyResNet,
     FrankaDroidDistillationRunnerCfg,
@@ -77,12 +74,7 @@ def load_teacher_policy(checkpoint_path: str, teacher_cfg: dict, device: str) ->
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint["model_state_dict"]
     
-    # Debug: Print all keys related to std
-    print("\n[DEBUG] Checking std in checkpoint:")
-    for key in state_dict.keys():
-        if 'std' in key.lower():
-            print(f"  Key: {key}, Shape: {state_dict[key].shape}, Value sample: {state_dict[key][:3] if len(state_dict[key].shape) > 0 else state_dict[key]}")
-    
+    # Build teacher network
     num_obs = teacher_cfg["num_observations"]
     num_actions = teacher_cfg["num_actions"]
     hidden_dims = teacher_cfg["actor_hidden_dims"]
@@ -106,30 +98,10 @@ def load_teacher_policy(checkpoint_path: str, teacher_cfg: dict, device: str) ->
     
     teacher = TeacherActor().to(device)
     actor_dict = {k.replace("actor.", "network."): v for k, v in state_dict.items() if k.startswith("actor.")}
-    
-    # Load std - check for both "std" and "log_std"
-    std_loaded = False
+
     if "std" in state_dict:
         actor_dict["std"] = state_dict["std"]
-        std_loaded = True
-        print(f"[DEBUG] Loaded 'std' directly: {state_dict['std']}")
-    elif "log_std" in state_dict:
-        # RSL-RL often saves log_std instead of std
-        actor_dict["std"] = torch.exp(state_dict["log_std"])
-        std_loaded = True
-        print(f"[DEBUG] Loaded 'log_std' and converted: log_std={state_dict['log_std']}, std={torch.exp(state_dict['log_std'])}")
-    elif "actor.std" in state_dict:
-        actor_dict["std"] = state_dict["actor.std"]
-        std_loaded = True
-        print(f"[DEBUG] Loaded 'actor.std': {state_dict['actor.std']}")
-    elif "actor.log_std" in state_dict:
-        actor_dict["std"] = torch.exp(state_dict["actor.log_std"])
-        std_loaded = True
-        print(f"[DEBUG] Loaded 'actor.log_std' and converted: {torch.exp(state_dict['actor.log_std'])}")
-    
-    if not std_loaded:
-        print("[WARNING] No std found in checkpoint, using default std=1.0")
-    
+
     teacher.load_state_dict(actor_dict, strict=False)
     teacher.eval()
     
@@ -277,22 +249,22 @@ def evaluate_on_training_env(
         # Student eval: regular time series logging
         wandb.log({
             # Success metrics
-            f"eval/success_rate": success_rate,
-            f"eval/high_quality_rate": high_quality_rate,
+            f"student_eval/success_rate": success_rate,
+            f"student_eval/high_quality_rate": high_quality_rate,
             
-            # R/step distribution (核心指标)
-            f"eval/reward_per_step_mean": mean_r_per_step,
-            f"eval/reward_per_step_median": median_r_per_step,
-            f"eval/reward_per_step_max": max_r_per_step,
-            f"eval/reward_per_step_min": min_r_per_step,
+            # R/step distribution
+            f"student_eval/reward_per_step_mean": mean_r_per_step,
+            f"student_eval/reward_per_step_median": median_r_per_step,
+            f"student_eval/reward_per_step_max": max_r_per_step,
+            f"student_eval/reward_per_step_min": min_r_per_step,
             
             # Length distribution
-            f"eval/length_mean": mean_length,
-            f"eval/length_median": median_length,
-            f"eval/success_length_mean": mean_success_length,
+            f"student_eval/length_mean": mean_length,
+            f"student_eval/length_median": median_length,
+            f"student_eval/success_length_mean": mean_success_length,
             
-            # Total reward (仅供参考)
-            f"eval/total_reward_mean": mean_reward,
+            # Total reward
+            f"student_eval/total_reward_mean": mean_reward,
         }, step=step)
     
     print(f"{'='*80}\n")
@@ -600,7 +572,7 @@ def main():
                     "episode/success_rate": success_rate,
                     "episode/high_quality_rate": high_quality_rate,  # R/step > 8.0
                     
-                    # R/step distribution (核心指标)
+                    # R/step distribution (core metric)
                     "episode/reward_per_step_mean": mean_r_per_step,
                     "episode/reward_per_step_median": median_r_per_step,
                     "episode/reward_per_step_max": max_r_per_step,
@@ -608,7 +580,7 @@ def main():
                     # Episode length distribution
                     "episode/length_mean": mean_length,
                     "episode/length_min": min_length,
-                    "episode/success_length_mean": mean_success_length,  # 只统计成功的
+                    "episode/success_length_mean": mean_success_length,  # only count successful episodes
                     
                     # Total reward (仅供参考)
                     "episode/total_reward_mean": sum(recent_rewards)/len(recent_rewards),
@@ -647,43 +619,14 @@ def main():
             print(f"  Evaluation @ {step:,}: Success={eval_results['success_rate']:.1f}%, R/step={eval_results['mean_r_per_step']:.2f}\n")
             
             # Upload previous period's videos (already written and stable)
-            if args_cli.video and video_dir and video_dir.exists():
+            if args_cli.video:
                 print(f"  📤 Uploading videos from previous periods...")
-                all_videos = sorted(glob.glob(str(video_dir / "*.mp4")))
-                new_videos = [v for v in all_videos if v not in uploaded_videos]
-                
-                if new_videos:
-                    for video_path in new_videos:
-                        video_name = os.path.basename(video_path)
-                        print(f"     Uploading: {video_name} ({os.path.getsize(video_path)/1024:.1f} KB)")
-                        
-                        # Extract step from filename using regex (same as final upload)
-                        match = re.search(r'step-(\d+)', video_name)
-                        if match:
-                            upload_step = int(match.group(1))
-                        else:
-                            # Fallback: estimate from number of uploaded videos
-                            upload_step = len(uploaded_videos) * eval_interval
-                            print(f"     ⚠️  Could not extract step from filename, using fallback: {upload_step}")
-                        
-                        # Determine key based on step
-                        if upload_step == 0:
-                            # Teacher baseline - upload under teacher_baseline section
-                            wandb_key = "teacher_baseline/video"
-                        else:
-                            # Student progress - upload under eval section
-                            wandb_key = "eval/video"
-                        
-                        try:
-                            wandb.log({wandb_key: wandb.Video(video_path, fps=30, format="mp4")}, step=upload_step)
-                            uploaded_videos.add(video_path)
-                            print(f"     ✅ {video_name} uploaded to {wandb_key} at step {upload_step}")
-                        except Exception as e:
-                            print(f"     ❌ Failed: {e}")
-                    
-                    print(f"  ✓ Uploaded {len(new_videos)} video(s)\n")
-                else:
-                    print(f"  ℹ️  No new videos to upload\n")
+                upload_videos_to_wandb(
+                    video_dir=video_dir,
+                    uploaded_videos=uploaded_videos,
+                    eval_interval=eval_interval,
+                    verbose=True
+                )
             
             # Reset environment after eval
             obs_dict, _ = env.reset()
@@ -723,70 +666,18 @@ def main():
         print(f"{'📹'*40}\n")
         
         # Wait for the last video to be fully written (max 10 minutes)
-        print(f"  ⏳ Waiting for final video to be written (max 10 min)...")
-        max_wait = 600  # 10 minutes
-        wait_time = 0
-        prev_size = 0
-        stable_count = 0
-        last_video_count = len(glob.glob(str(video_dir / "*.mp4")))
-        
-        while wait_time < max_wait:
-            all_videos = sorted(glob.glob(str(video_dir / "*.mp4")), key=os.path.getmtime)
-            current_video_count = len(all_videos)
-            
-            if all_videos:
-                latest_video = all_videos[-1]
-                current_size = os.path.getsize(latest_video)
-                
-                # Check if file size is stable (video writing complete)
-                if current_size == prev_size and current_size > 0:
-                    stable_count += 1
-                    if stable_count >= 3:  # 连续3次稳定（6秒）
-                        print(f"  ✓ Final video ready: {os.path.basename(latest_video)} ({current_size/1024:.1f} KB)")
-                        print(f"  ✓ Wait time: {wait_time}s\n")
-                        break
-                else:
-                    stable_count = 0
-                    prev_size = current_size
-                    if wait_time % 10 == 0 and wait_time > 0:  # 每10秒更新一次
-                        print(f"     Still writing... ({current_size/1024:.1f} KB, {wait_time}s elapsed)")
-            
-            time.sleep(2)
-            wait_time += 2
+        wait_for_video_stable(video_dir, max_wait_time=600)
         
         # Upload all videos
         print(f"\n  📤 Uploading all videos to wandb...")
-        all_videos = sorted(glob.glob(str(video_dir / "*.mp4")))
-        new_videos = [v for v in all_videos if v not in uploaded_videos]
+        num_uploaded = upload_videos_to_wandb(
+            video_dir=video_dir,
+            uploaded_videos=uploaded_videos,
+            fallback_step=step,
+            verbose=True
+        )
         
-        if new_videos:
-            for video_path in new_videos:
-                video_name = os.path.basename(video_path)
-                
-                # Extract step from filename
-                match = re.search(r'step-(\d+)', video_name)
-                if match:
-                    video_step = int(match.group(1))
-                else:
-                    video_step = step
-                    print(f"     ⚠️  Could not extract step from filename, using final step: {video_step}")
-                
-                # Determine key based on step (consistent with training uploads)
-                if video_step == 0:
-                    wandb_key = "teacher_baseline/video"
-                else:
-                    wandb_key = "eval/video"
-                
-                print(f"     Uploading: {video_name} ({os.path.getsize(video_path)/1024:.1f} KB) → {wandb_key} (step={video_step})")
-                try:
-                    wandb.log({wandb_key: wandb.Video(video_path, fps=30, format="mp4")}, step=video_step)
-                    uploaded_videos.add(video_path)
-                    print(f"     ✅ Uploaded")
-                except Exception as e:
-                    print(f"     ❌ Failed: {e}")
-            
-            print(f"\n  ✓ Total uploaded: {len(new_videos)} video(s)")
-        else:
+        if num_uploaded == 0:
             print(f"  ℹ️  All videos already uploaded")
         
         print(f"{'='*80}\n")
