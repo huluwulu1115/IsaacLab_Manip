@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from typing import Tuple
 
-from .resnet_encoder import ResNet18RGBDEncoder, DexterahStyleEncoder
+from .resnet_encoder import DexterahStyleEncoder
 
 
 class VisionStudentPolicyResNet(nn.Module):
@@ -37,37 +37,21 @@ class VisionStudentPolicyResNet(nn.Module):
         activation: str = "elu",
         image_height: int = 240,
         image_width: int = 320,
-        encoder_type: str = "dextrah",  # "resnet18" or "dextrah"
-        use_pretrained: bool = True,
     ):
         super().__init__()
         
         self.proprio_dim = proprio_dim
         self.action_dim = action_dim
         self.vision_feature_dim = vision_feature_dim
-        self.encoder_type = encoder_type
-        
-        # Vision encoder (select encoder type)
-        if encoder_type == "dextrah":
-            # Full DEXTRAH-style: ResNet18 + Transformer
-            self.vision_encoder = DexterahStyleEncoder(
-                feature_dim=vision_feature_dim,
-                input_height=image_height,
-                input_width=image_width,
-                n_transformer_heads=4,
-                n_transformer_layers=2,
-            )
-            print(f"[Student Policy] Using DEXTRAH-style encoder (ResNet18 + Transformer)")
-        else:
-            # Simplified ResNet18 (without Transformer)
-            self.vision_encoder = ResNet18RGBDEncoder(
-                feature_dim=vision_feature_dim,
-                input_height=image_height,
-                input_width=image_width,
-                use_pretrained=use_pretrained,
-                freeze_backbone=False,
-            )
-            print(f"[Student Policy] Using ResNet18 encoder (pretrained={use_pretrained})")
+        self.vision_encoder = DexterahStyleEncoder(
+            feature_dim=vision_feature_dim,
+            input_height=image_height,
+            input_width=image_width,
+            n_transformer_heads=4,
+            n_transformer_layers=2,
+        )
+        print(f"[Student Policy] Using DEXTRAH-style encoder (ResNet18 + Transformer)")
+
         
         # MLP for combined features
         mlp_input_dim = proprio_dim + vision_feature_dim
@@ -127,8 +111,10 @@ class VisionStudentPolicyResNet(nn.Module):
         action_mean = self.mlp(combined)
         
         # DEXTRAH-style: exp(log_std) to ensure std > 0 and prevent collapse
-        # No clamp - let sigma_loss guide the value to match teacher (σ ≈ 0.8-4.0)
-        action_std = torch.exp(self.log_action_std)
+        # Clamp log_std to prevent numerical explosion: log(0.01) to log(10.0)
+        # This maps to std range [0.01, 10.0], covering teacher's range [0.3, 4.0]
+        log_std_clamped = torch.clamp(self.log_action_std, min=-4.6, max=2.3)  # log(0.01)=-4.6, log(10)=2.3
+        action_std = torch.exp(log_std_clamped)
         action_std = action_std.unsqueeze(0).expand_as(action_mean)
         
         return action_mean, action_std

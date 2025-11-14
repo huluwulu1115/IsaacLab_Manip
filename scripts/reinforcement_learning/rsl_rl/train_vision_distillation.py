@@ -19,6 +19,7 @@ import gymnasium as gym
 
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from isaaclab.app import AppLauncher
 
 # Import distillation utilities
@@ -93,7 +94,7 @@ def load_teacher_policy(checkpoint_path: str, teacher_cfg: dict, device: str) ->
             self.network = nn.Sequential(*layers)
             self.std = nn.Parameter(torch.ones(num_actions), requires_grad=False)
         
-        def act(self, obs, deterministic=True):
+        def act(self, obs):
             return self.network(obs)
     
     teacher = TeacherActor().to(device)
@@ -117,8 +118,7 @@ def evaluate_on_training_env(
     device: str,
     num_episodes: int,
     step: int,
-    teacher: nn.Module = None,
-    video_dir: Path = None
+    teacher: Optional[nn.Module] = None
 ):
     """Evaluate student policy on the current training environment (no new env creation).
     
@@ -129,7 +129,6 @@ def evaluate_on_training_env(
         num_episodes: Number of episodes to evaluate
         step: Current training step
         teacher: Teacher policy (if provided, used at step 0 for baseline)
-        video_dir: Video directory for wandb upload
     """
     # Use teacher at step 0 for baseline
     use_teacher_baseline = (step == 0 and teacher is not None)
@@ -140,11 +139,11 @@ def evaluate_on_training_env(
     print(f"{'='*80}")
     print(f"  - Episodes: {num_episodes}")
     print(f"  - Mode: Deterministic (no exploration noise)")
+    
     if use_teacher_baseline:
         print(f"  - Using: Teacher policy (state-based, as baseline)")
     else:
         print(f"  - Using: Student policy (vision-based)")
-    print(f"  - Note: Using training env (with video recording if enabled)")
     
     # Get number of envs and reset for evaluation
     num_envs = env.unwrapped.num_envs
@@ -171,7 +170,7 @@ def evaluate_on_training_env(
                 # Use student (vision-based)
                 proprio = obs_dict["policy"]
                 rgbd = torch.cat([obs_dict["wrist_cam_rgb"], obs_dict["wrist_cam_depth"]], dim=-1)
-                action = student.act(proprio, rgbd, deterministic=True)
+                action = student.act(proprio, rgbd)
             
             obs_dict, rewards, dones, infos = env.step(action)
             
@@ -337,19 +336,17 @@ def main():
     print(f"\n[3/4] Creating student...")
     student = VisionStudentPolicyResNet(
         proprio_dim=24, action_dim=8,
-        vision_feature_dim=256,
-        hidden_dims=[512, 256, 128],
+        vision_feature_dim=64,  # DEXTRAH-style: 64-dim vision features
+        hidden_dims=[256, 128, 64],  # Smaller MLP for 88-dim input (24+64)
         activation="elu",
         image_height=env_cfg.wrist_cam.height,
         image_width=env_cfg.wrist_cam.width,
-        encoder_type="resnet18",
-        use_pretrained=True,  # Use ImageNet pretrained
     ).to(args_cli.device)
     
     print(f"  ✓ Student ready ({sum(p.numel() for p in student.parameters()):,} params)")
     
-    # Optimizer
-    optimizer = optim.Adam(student.parameters(), lr=1e-4)
+    # Optimizer (lower learning rate for numerical stability)
+    optimizer = optim.Adam(student.parameters(), lr=5e-5)  # Reduced from 1e-4
     
     # Wandb initialization (required)
     # Generate descriptive run name based on key parameters
@@ -428,7 +425,6 @@ def main():
         num_episodes=num_eval_episodes,
         step=0,
         teacher=teacher,  # Pass teacher for step 0 baseline
-        video_dir=video_dir,  # Record teacher baseline video
     )
     
     print(f"  Teacher baseline: Success={initial_results['success_rate']:.1f}%, R/step={initial_results['mean_r_per_step']:.2f}")
@@ -487,16 +483,37 @@ def main():
             )
             loss = kl_per_dim.mean()
         else:
-            # DEXTRAH-style Loss (default)
-            weights = (1.0 / teacher_sigma) ** 2
+            # DEXTRAH-style Loss (default) with numerical stability
+            weights = (1.0 / (teacher_sigma + 1e-8)) ** 2  # Add epsilon for stability
             weighted_mean_loss = (((student_mean - teacher_action) ** 2) * weights).mean()
             sigma_loss = ((student_sigma.mean(dim=0) - teacher_sigma) ** 2).mean()
             loss = weighted_mean_loss + sigma_loss
         
+        # NaN detection and skip
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"\n⚠️  WARNING: NaN/Inf detected at step {step}! Skipping update...")
+            print(f"  student_mean range: [{student_mean.min():.2f}, {student_mean.max():.2f}]")
+            print(f"  student_sigma range: [{student_sigma.min():.4f}, {student_sigma.max():.4f}]")
+            print(f"  log_action_std: {student.log_action_std.detach().cpu().numpy()}")
+            # Skip this update
+            obs_dict, rewards, dones, infos = env.step(stepping_action.detach())
+            current_rewards += rewards
+            current_lengths += 1
+            step += 1
+            continue
+        
         # Update
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=1.0)
+        
+        # Stronger gradient clipping
+        grad_norm = torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=0.5)
+        
+        # Detect gradient explosion
+        if grad_norm > 10.0:
+            print(f"\n⚠️  Large gradient norm detected: {grad_norm:.2f}, skipping update")
+            continue
+            
         optimizer.step()
         
         # Step environment
@@ -613,7 +630,6 @@ def main():
                 num_episodes=num_eval_episodes,
                 step=step,
                 teacher=None,  # Use student for periodic evaluations
-                video_dir=video_dir,
             )
             
             print(f"  Evaluation @ {step:,}: Success={eval_results['success_rate']:.1f}%, R/step={eval_results['mean_r_per_step']:.2f}\n")
@@ -653,7 +669,6 @@ def main():
         num_episodes=num_eval_episodes * 2,  # More episodes for final eval
         step=step,
         teacher=None,  # Use student for final evaluation
-        video_dir=video_dir,
     )
     
     # Upload all remaining videos at the end

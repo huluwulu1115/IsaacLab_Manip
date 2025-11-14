@@ -71,3 +71,5 @@ tests/
 .isaac-lab-docker-history
 
 dextra_distillation/
+
+source/isaaclab_tasks/isaaclab_tasks/direct/franka_droid/stapler_temp/*
