@@ -10,17 +10,21 @@ set -euo pipefail  # Exit on error, undefined variable, or pipe failure
 readonly TASK="Isaac-DROID-Direct-v0"
 readonly NUM_ENVS=4096
 readonly EXP_NAME="franka_droid_direct"
-readonly MAX_ITERATIONS=1500
+readonly MAX_ITERATIONS=1500  # Overrides config file value (config has 3000, but command line takes precedence)
 readonly SEED=42
+
+# Video recording parameters (set ENABLE_VIDEO=true to record videos)
+readonly ENABLE_VIDEO=false  # Set to true to enable video recording
+readonly VIDEO_INTERVAL=500   # Record video every 500 steps
+readonly VIDEO_LENGTH=200     # Length of each video in steps
 
 # Environment setup
 readonly GPU_ID=0
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 export TMPDIR="$(pwd)/tmp"
 
-# TensorBoard parameters
-readonly TENSORBOARD_PORT=6007
-readonly TENSORBOARD_LOG_DIR="logs/rsl_rl/${EXP_NAME}"
+# Wandb parameters
+readonly WANDB_PROJECT="franka_droid_teacher"
 
 # Detect if running over SSH
 IS_SSH=false
@@ -49,8 +53,8 @@ handle_interrupt() {
     fi
     
     echo ""
-    echo "📊 TensorBoard is still running at: http://localhost:$TENSORBOARD_PORT"
-    echo "   To stop it: pkill -f tensorboard"
+    echo "📊 Training logs are available on Wandb"
+    echo "   Project: $WANDB_PROJECT"
     print_separator
     exit 130  # Standard exit code for Ctrl+C
 }
@@ -79,79 +83,61 @@ find_best_checkpoint() {
     fi
 }
 
-# Launch TensorBoard in the background
-launch_tensorboard() {
-    local log_dir="$1"
-    local port="$2"
-    
-    # Check if TensorBoard is already running on this port
-    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "⚠ Port $port already in use (TensorBoard may already be running)"
-        if [ "$IS_SSH" = true ]; then
-            echo "  📊 Access at: http://$(hostname):$port"
+# Check if wandb is configured
+check_wandb() {
+    if command -v wandb >/dev/null 2>&1; then
+        # Check if wandb is logged in
+        if wandb status >/dev/null 2>&1; then
+            return 0
         else
-            echo "  📊 Access at: http://localhost:$port"
+            return 1
         fi
-        return 0
-    fi
-    
-    # Check if tensorboard command is available
-    if ! command -v tensorboard &> /dev/null; then
-        echo "⚠ TensorBoard not found (install: pip install tensorboard)"
-        return 1
-    fi
-    
-    # Create log directory if it doesn't exist
-    mkdir -p "$log_dir"
-    
-    # Launch TensorBoard in the background
-    tensorboard --logdir="$log_dir" --port=$port --host=0.0.0.0 &> /dev/null &
-    local tb_pid=$!
-    
-    # Wait a moment for TensorBoard to start
-    sleep 2
-    
-    # Check if it's actually running
-    if ps -p $tb_pid > /dev/null 2>&1; then
-        echo "✓ TensorBoard started (PID: $tb_pid)"
-        if [ "$IS_SSH" = true ]; then
-            echo "  📊 Access at: http://$(hostname):$port"
-            echo "  Or use: http://localhost:$port (if on VPN/same network)"
-        else
-            echo "  📊 Access at: http://localhost:$port"
-        fi
-        return 0
     else
-        echo "⚠ TensorBoard failed to start"
         return 1
     fi
 }
+
 
 #───────────────────────────────────────────────────────────────────────────────────
 # MAIN TRAINING
 #───────────────────────────────────────────────────────────────────────────────────
 
 print_separator
-echo "🚀 RL Training - RSL-RL"
+echo "🎓 Teacher Policy Training - RSL-RL PPO"
 print_separator
+printf "Policy Type   : Teacher (State-based, Privileged Info)\n"
 printf "Framework     : RSL-RL\n"
+printf "Algorithm     : PPO (Proximal Policy Optimization)\n"
 printf "GPU           : %s\n" "$GPU_ID"
 printf "Task          : %s\n" "$TASK"
 printf "Experiment    : %s\n" "$EXP_NAME"
 printf "Num envs      : %s\n" "$NUM_ENVS"
 printf "Max iterations: %s\n" "$MAX_ITERATIONS"
 printf "Seed          : %s\n" "$SEED"
+printf "Logger        : Wandb\n"
+printf "Wandb Project : %s\n" "$WANDB_PROJECT"
+if [ "$ENABLE_VIDEO" = true ]; then
+    printf "Video Recording: Enabled (every %d steps, %d steps/video)\n" "$VIDEO_INTERVAL" "$VIDEO_LENGTH"
+    printf "Video Upload  : Auto-upload to Wandb after training\n"
+else
+    printf "Video Recording: Disabled\n"
+fi
 if [ "$IS_SSH" = true ]; then
     printf "Connection    : SSH (remote mode)\n"
 fi
 print_separator
 
-# Launch TensorBoard
+# Check Wandb configuration
 echo ""
-echo "📊 Starting TensorBoard..."
-echo "   Watching all '$EXP_NAME' experiments (current + history)"
-echo "   Directory: $TENSORBOARD_LOG_DIR"
-launch_tensorboard "$TENSORBOARD_LOG_DIR" "$TENSORBOARD_PORT"
+echo "📊 Checking Wandb configuration..."
+check_wandb || {
+    echo ""
+    echo "⚠️  Wandb is not configured. Please run:"
+    echo "    pip install wandb"
+    echo "    wandb login"
+    echo ""
+    exit 1
+}
 echo ""
 
 # Run training with RSL-RL
@@ -163,13 +149,25 @@ echo ""
 # Set training active flag
 TRAINING_ACTIVE=true
 
+# Build training command
+TRAIN_CMD=(
+    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py
+    --task "$TASK"
+    --num_envs "$NUM_ENVS"
+    --max_iterations "$MAX_ITERATIONS"
+    --seed "$SEED"
+    --headless
+)
+
+# Add video recording if enabled
+if [ "$ENABLE_VIDEO" = true ]; then
+    TRAIN_CMD+=(--video)
+    TRAIN_CMD+=(--video_interval "$VIDEO_INTERVAL")
+    TRAIN_CMD+=(--video_length "$VIDEO_LENGTH")
+fi
+
 # Run training and capture PID
-./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \
-    --task "$TASK" \
-    --num_envs "$NUM_ENVS" \
-    --max_iterations "$MAX_ITERATIONS" \
-    --seed "$SEED" \
-    --headless &
+"${TRAIN_CMD[@]}" &
 
 TRAINING_PID=$!
 
@@ -180,12 +178,13 @@ TRAIN_EXIT_CODE=$?
 # Reset flag
 TRAINING_ACTIVE=false
 
+# Check training result
 if [ $TRAIN_EXIT_CODE -eq 0 ]; then
     echo ""
     echo "✓ Training completed successfully!"
 else
     echo ""
-    echo "⚠ Training exited with code: $TRAIN_EXIT_CODE"
+    echo "⚠️  Training exited with code: $TRAIN_EXIT_CODE"
 fi
 
 #───────────────────────────────────────────────────────────────────────────────────
@@ -216,38 +215,52 @@ echo ""
 echo "  Checkpoint directory:"
 echo "  $CKPT_DIR"
 
+# Show video location if enabled
+if [ "$ENABLE_VIDEO" = true ]; then
+    print_separator
+    echo "📹 Training Videos:"
+    print_separator
+    VIDEO_DIR="$CKPT_DIR/videos/train"
+    if [ -d "$VIDEO_DIR" ]; then
+        VIDEO_COUNT=$(find "$VIDEO_DIR" -name "*.mp4" 2>/dev/null | wc -l)
+        echo "  Video directory: $VIDEO_DIR"
+        echo "  Videos recorded: $VIDEO_COUNT"
+        echo ""
+        echo "  ℹ️  Videos are saved locally every $VIDEO_INTERVAL steps"
+        echo "  ℹ️  Video length: $VIDEO_LENGTH steps per video"
+        echo "  ℹ️  Videos are automatically uploaded to Wandb after training"
+    else
+        echo "  ⚠️  Video directory not found: $VIDEO_DIR"
+        echo "  Videos may not have been recorded during training."
+    fi
+    echo ""
+fi
+
 # Show next steps
 echo ""
 print_separator
-echo "📋 How to Use Your Trained Policy:"
+echo "📋 How to Use Your Trained Teacher Policy:"
 print_separator
 echo ""
 echo "1️⃣  Evaluate policy (GUI mode):"
 echo ""
 echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \\"
 echo "      --task $TASK \\"
-echo "      --checkpoint '$ABS_CKPT_PATH' \\"
+echo "      --checkpoint \"$ABS_CKPT_PATH\" \\"
 echo "      --num_envs 16"
 echo ""
-echo "2️⃣  Evaluate policy with video recording:"
+echo "2️⃣  Use this teacher for distillation training:"
 echo ""
-echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \\"
-echo "      --task $TASK \\"
-echo "      --checkpoint '$ABS_CKPT_PATH' \\"
-echo "      --num_envs 4 \\"
-echo "      --video \\"
-echo "      --video_length 500 \\"
-echo "      --headless"
-echo ""
-echo "3️⃣  Continue training from this checkpoint:"
-echo ""
-echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \\"
-echo "      --task $TASK \\"
-echo "      --resume \\"
-echo "      --load_run '$(dirname $CKPT_DIR)'"
+echo "    ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train_vision_distillation.py \\"
+echo "      --task Isaac-DROID-Distillation-v0 \\"
+echo "      --load_run \"$(basename "$CKPT_DIR")\" \\"
+echo "      --checkpoint \"$(basename "$ABS_CKPT_PATH")\" \\"
+echo "      --num_envs 128 \\"
+echo "      --max_steps 100000 \\"
+echo "      --early_termination"
 echo ""
 print_separator
-echo "📊 TensorBoard is still running at: http://localhost:$TENSORBOARD_PORT"
-echo "   To stop it: pkill -f tensorboard"
+echo "📊 Training logs available on Wandb:"
+echo "   Project: $WANDB_PROJECT"
+echo "   URL: https://wandb.ai/<your-username>/${WANDB_PROJECT}"
 print_separator
-

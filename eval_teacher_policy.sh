@@ -8,9 +8,9 @@ echo "========================================="
 cd /home/huluwulu/Projects/IsaacLab_Manip
 
 # Configuration
-TEACHER_RUN="2025-10-23_19-43-40"
+TEACHER_RUN="2025-11-13_22-43-54"
 TEACHER_CHECKPOINT="model_1499.pt"
-CHECKPOINT_PATH="logs/rsl_rl/franka_droid_direct/${TEACHER_RUN}/${TEACHER_CHECKPOINT}"
+CHECKPOINT_PATH="logs/rsl_rl/franka_droid_cube_direct/${TEACHER_RUN}/${TEACHER_CHECKPOINT}"
 
 # Early termination settings (default: enabled)
 ENABLE_EARLY_TERMINATION=${ENABLE_EARLY_TERMINATION:-true}

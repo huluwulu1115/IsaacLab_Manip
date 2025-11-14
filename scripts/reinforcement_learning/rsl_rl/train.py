@@ -76,6 +76,7 @@ import gymnasium as gym
 import os
 import torch
 from datetime import datetime
+from pathlib import Path
 
 import omni
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
@@ -95,6 +96,13 @@ from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+
+
+import sys
+sys.path.append(str(Path(__file__).parent))
+from distillation_utils import upload_videos_to_wandb, wait_for_video_stable
+import wandb
+
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 
@@ -171,8 +179,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             "video_length": args_cli.video_length,
             "disable_logger": True,
         }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
+        print("[INFO] Recording videos during training:")
+        print(f"  - Interval: every {args_cli.video_interval:,} steps")
+        print(f"  - Length: {args_cli.video_length} steps per video")
+        print(f"  - Folder: {video_kwargs['video_folder']}")
+        if agent_cfg.logger == "wandb" and VIDEO_UPLOAD_AVAILABLE:
+            print(f"  - Upload: Videos will be uploaded to wandb after training")
+        print(f"  ⚠️  Training will be ~30% slower")
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
@@ -199,6 +212,33 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+
+    # Upload videos to wandb if enabled
+    if args_cli.video:
+        print("\n" + "="*80)
+        print("📹 UPLOADING TRAINING VIDEOS TO WANDB")
+        print("="*80)
+        
+        video_dir = Path(log_dir) / "videos" / "train"
+
+        print("  Waiting for final video to be fully written...")
+        wait_for_video_stable(video_dir, max_wait_time=600)
+        
+        # Upload all videos
+        print(f"  Scanning directory: {video_dir}")
+        uploaded_videos = set()
+        num_uploaded = upload_videos_to_wandb(
+            video_dir=video_dir,
+            uploaded_videos=uploaded_videos,
+            eval_interval=args_cli.video_interval,
+            verbose=True
+        )
+        
+        if num_uploaded > 0:
+            print(f"  ✓ Successfully uploaded {num_uploaded} video(s) to wandb")
+        else:
+            print(f"  ℹ️  No videos found to upload")
+        print("="*80 + "\n")
 
     # close the simulator
     env.close()

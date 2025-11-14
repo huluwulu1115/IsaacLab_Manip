@@ -16,7 +16,7 @@ This package contains all components needed for teacher-student distillation:
 
 from .distillation_env import FrankaDroidDistillationEnv, FrankaDroidDistillationEnvCfg
 from .vision_policy_resnet import VisionStudentPolicyResNet
-from .resnet_encoder import ResNet18RGBDEncoder, DexterahStyleEncoder
+from .resnet_encoder import DexterahStyleEncoder
 from .rsl_rl_distillation_cfg import FrankaDroidDistillationRunnerCfg
 
 __all__ = [
@@ -28,6 +28,5 @@ __all__ = [
     # Student Policies
     "VisionStudentPolicyResNet",
     # Vision Encoders
-    "ResNet18RGBDEncoder",
     "DexterahStyleEncoder",
 ]

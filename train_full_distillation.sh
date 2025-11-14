@@ -16,7 +16,7 @@ DEVICE="cuda:0"
 TASK="Isaac-DROID-Distillation-v0"
 
 # Early Termination (true/false)
-EARLY_TERMINATION=false
+EARLY_TERMINATION=true
 
 # Beta Schedule (Quickly modify to test different strategies)
 # Current Strategy: Fast transition + long imitation (15k-35k transition, 35k-100k pure student)

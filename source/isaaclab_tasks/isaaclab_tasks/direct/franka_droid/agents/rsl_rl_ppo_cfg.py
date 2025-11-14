@@ -4,47 +4,19 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.utils import configclass
-
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 
 
 @configclass
 class FrankaDroidPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1500
-    save_interval = 50
-    experiment_name = "franka_droid_direct"
-    policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
-        actor_hidden_dims=[256, 128, 64],
-        critic_hidden_dims=[256, 128, 64],
-        activation="elu",
-    )
-    algorithm = RslRlPpoAlgorithmCfg(
-        value_loss_coef=1.0,
-        use_clipped_value_loss=True,
-        clip_param=0.2,
-        entropy_coef=0.006,
-        num_learning_epochs=5,
-        num_mini_batches=4,
-        learning_rate=1.0e-4,
-        schedule="adaptive",
-        gamma=0.98,
-        lam=0.95,
-        desired_kl=0.01,
-        max_grad_norm=1.0,
-    )
-
-
-@configclass
-class DexsuiteKukaAllegroPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 32
-    obs_groups = {"policy": ["policy", "proprio", "perception"], "critic": ["policy", "proprio", "perception"]}
-    max_iterations = 15000
-    save_interval = 250
-    experiment_name = "dexsuite_kuka_allegro"
+    max_iterations = 3000
+    save_interval = 100
+    experiment_name = "franka_droid_cube_direct"
+    # Logging configuration
+    logger = "wandb"  # Use wandb instead of tensorboard
+    wandb_project = "franka_droid_cube_teacher"  # Wandb project name
+    
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_obs_normalization=True,
