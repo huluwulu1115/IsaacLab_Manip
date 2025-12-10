@@ -4,12 +4,13 @@
 set -e
 
 ########################################################################################
-# Teacher
-TEACHER_RUN="2025-10-23_19-43-40"
-TEACHER_CHECKPOINT="model_1499.pt"
+# Teacher (UPDATE THIS after training a new teacher!)
+# Run: ./train_droid_rsl_rl.sh first, then update these paths
+TEACHER_RUN="2025-10-23_19-43-40"  # TODO: Update to your new teacher run
+TEACHER_CHECKPOINT="model_1499.pt"  # TODO: Update to latest checkpoint (e.g., model_5000.pt)
 
 # Training params
-NUM_ENVS=128
+NUM_ENVS=128  # Reduced for vision (memory-intensive)
 MAX_STEPS=100000
 SEED=42
 DEVICE="cuda:0"
@@ -18,33 +19,27 @@ TASK="Isaac-DROID-Distillation-v0"
 # Early Termination (true/false)
 EARLY_TERMINATION=true
 
-# Beta Schedule (Quickly modify to test different strategies)
-# Current Strategy: Fast transition + long imitation (15k-35k transition, 35k-100k pure student)
-BETA_START=15000
-BETA_END=35000    # 20k steps fast transition
-# Other strategies examples:
-# Conservative: BETA_START=15000, BETA_END=60000 (45k steps transition)
-# Super fast: BETA_START=10000, BETA_END=25000 (15k steps transition)
-# Faster: BETA_START=15000, BETA_END=30000 (15k steps transition)
+# Beta Schedule (Teacher→Student transition)
+# Episode: ~143 steps at 14.3Hz control frequency
+BETA_START=15000   # Start linear decay
+BETA_END=35000     # End decay (20k steps transition)
+# Conservative: BETA_START=15000, BETA_END=60000 (45k steps)
+# Faster: BETA_START=10000, BETA_END=25000 (15k steps)
 
-
-# Target std for student (overrides teacher's high exploration std=2.4)
+# Target std for student (overrides teacher's exploration std)
 TARGET_STD=0.3
 # 0.2-0.3: Precise control (recommended for grasping)
 # 0.4-0.5: Moderate exploration
-# 0.6-0.8: Higher exploration
 
 # Loss type (true/false)
 USE_KL_LOSS=false
-# true:  KL Divergence (information-theoretic, theoretically optimal)
-# false: DEXTRAH Weighted MSE (default, simpler and stable)
+# true:  KL Divergence (information-theoretic)
+# false: DEXTRAH Weighted MSE (default, stable)
 
 # Video recording (true/false) - WARNING: Slows training ~30%
 ENABLE_VIDEO=true
 VIDEO_INTERVAL=10000  # Record every 10k steps
-VIDEO_LENGTH=200      # Steps per video (enough for 2 complete episodes ~250 steps each)
-# true:  Record viewport videos during training (third-person view)
-# false: No videos, use play_vision_policy.py after training
+VIDEO_LENGTH=150      # ~1 episode at 14.3Hz (~143 steps max)
 ########################################################################################
 
 GREEN='\033[0;32m'

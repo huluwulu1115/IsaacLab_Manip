@@ -10,13 +10,13 @@ set -euo pipefail  # Exit on error, undefined variable, or pipe failure
 readonly TASK="Isaac-DROID-Direct-v0"
 readonly NUM_ENVS=4096
 readonly EXP_NAME="franka_droid_direct"
-readonly MAX_ITERATIONS=1500  # Overrides config file value (config has 3000, but command line takes precedence)
+readonly MAX_ITERATIONS=5000  # Pick-and-place task needs more iterations (10s episodes with early termination)
 readonly SEED=42
 
 # Video recording parameters (set ENABLE_VIDEO=true to record videos)
 readonly ENABLE_VIDEO=false  # Set to true to enable video recording
-readonly VIDEO_INTERVAL=500   # Record video every 500 steps
-readonly VIDEO_LENGTH=200     # Length of each video in steps
+readonly VIDEO_INTERVAL=1000   # Record video every 500 iterations
+readonly VIDEO_LENGTH=150     # Length of each video in steps (~1 episode at 14.3Hz)
 
 # Environment setup
 readonly GPU_ID=0

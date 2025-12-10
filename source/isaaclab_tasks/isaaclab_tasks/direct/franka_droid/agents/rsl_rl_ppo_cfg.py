@@ -9,14 +9,16 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 @configclass
 class FrankaDroidPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
-    max_iterations = 3000
-    save_interval = 100
+    # Episode: max ~143 steps (10s @ 14.3Hz), early termination ~7 steps after success
+    # Control freq matches real hardware (~15Hz)
+    num_steps_per_env = 48  # Covers ~33% of episode, good for grasp→lift→move sequence
+    max_iterations = 5000  # Pick-and-place task complexity
+    save_interval = 200
     experiment_name = "franka_droid_cube_direct"
     # Logging configuration
     logger = "wandb"  # Use wandb instead of tensorboard
     wandb_project = "franka_droid_cube_teacher"  # Wandb project name
-    
+
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_obs_normalization=True,
@@ -29,10 +31,10 @@ class FrankaDroidPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.005,
+        entropy_coef=0.01,  # Increased for better exploration at lower control freq
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-3,
+        learning_rate=3.0e-4,  # Conservative LR for stability with fewer steps per episode
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
